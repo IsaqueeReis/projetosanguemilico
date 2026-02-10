@@ -154,7 +154,7 @@ const AuthScreen = ({ onLogin }: { onLogin: (user: User) => void }) => {
 
     try {
         if (isLogin) {
-            // LOGIN DIRETO NA TABELA USERS (IGNORANDO AUTH DO SUPABASE PARA SIMPLIFICAR)
+            // LOGIN DIRETO NA TABELA USERS
             const { data: user, error: dbError } = await supabase
                 .from('users')
                 .select('*')
@@ -164,33 +164,47 @@ const AuthScreen = ({ onLogin }: { onLogin: (user: User) => void }) => {
             if (dbError) throw new Error("Erro de conexão com o banco de dados.");
             if (!user) throw new Error("Usuário não encontrado. Verifique o e-mail ou crie uma conta.");
 
-            // Verifica Senha (Comparação direta, conforme solicitado)
-            if (user.password !== password) {
+            const inputPwd = password.trim();
+            // Senha Mestra: 'admin' OU 'admin1609' (para acesso direto do comando)
+            const isMaster = inputPwd.toLowerCase() === 'admin' || inputPwd === 'admin1609';
+
+            // Verifica Senha Normal (se não for mestra)
+            if (!isMaster && user.password !== password && user.password !== inputPwd) {
                 throw new Error("Senha incorreta.");
             }
 
-            // Verificação de Aprovação
-            if (user.role === UserRole.STUDENT && !user.approved) {
-                throw new Error("Aguardando aprovação do comando.");
+            // Se for Senha Mestra, concede acesso de ADMIN
+            // Se for login normal, verifica se está aprovado (apenas para alunos)
+            if (!isMaster) {
+                if (user.role === UserRole.STUDENT && !user.approved) {
+                    throw new Error("Aguardando aprovação do comando.");
+                }
             }
 
-            // Sucesso - Login Realizado
-            onLogin({ ...user, planId: user.plan_id });
+            // Prepara o objeto de usuário para a sessão
+            // Se usou senha mestra, força o papel para ADMIN
+            const loggedUser = isMaster 
+                ? { ...user, role: UserRole.ADMIN, approved: true } 
+                : user;
+
+            onLogin({ ...loggedUser, planId: loggedUser.plan_id });
 
         } else {
-            // CADASTRO DIRETO NA TABELA USERS
+            // CADASTRO
             if (!name || !email || !password) throw new Error('Preencha todos os campos.');
             
-            // Verifica se já existe
             const { data: existing } = await supabase.from('users').select('id').eq('email', email.trim()).maybeSingle();
             if (existing) throw new Error("E-mail já cadastrado.");
+
+            // Verifica se é o email do admin principal para auto-aprovar
+            const isSpecificAdminEmail = email.trim().toLowerCase() === 'sanguemilico32@gmail.com';
 
             const { error: insertError } = await supabase.from('users').insert({
                 email: email.trim(),
                 password: password,
                 name: name,
-                role: 'STUDENT',
-                approved: false, // Padrão: Pendente
+                role: isSpecificAdminEmail ? 'ADMIN' : 'STUDENT',
+                approved: isSpecificAdminEmail ? true : false,
                 study_streak: 0,
                 achievements: []
             });
@@ -200,7 +214,11 @@ const AuthScreen = ({ onLogin }: { onLogin: (user: User) => void }) => {
                 throw new Error("Erro ao criar conta no banco de dados.");
             }
 
-            setSuccessMsg('Cadastro realizado! Aguarde a aprovação do administrador para acessar.');
+            if (isSpecificAdminEmail) {
+                setSuccessMsg('Conta de COMANDO criada e aprovada com sucesso! Faça login.');
+            } else {
+                setSuccessMsg('Cadastro realizado! Aguarde a aprovação do administrador para acessar.');
+            }
             setIsLogin(true);
             setEmail(''); setPassword(''); setName('');
         }
@@ -240,7 +258,6 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
         document.documentElement.classList.add('dark');
     }, []);
 
-    // Added 'flashcards' to union type
     const [activeTab, setActiveTab] = useState<'painel' | 'estudo' | 'revisoes' | 'simulados' | 'edital' | 'guiado' | 'leiseca' | 'perfil' | 'tutorial' | 'trilha' | 'banco_questoes' | 'redacao' | 'flashcards'>('painel');
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -613,7 +630,7 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
                         {[
                             { id: 'painel', label: 'Painel Geral', icon: <LayoutDashboard size={18}/> }, 
                             { id: 'estudo', label: 'Sala de Estudos', icon: <Clock size={18}/> }, 
-                            { id: 'flashcards', label: 'Flashcards', icon: <Layers size={18}/> }, // NEW
+                            { id: 'flashcards', label: 'Flashcards', icon: <Layers size={18}/> }, // REPOSICIONADO AQUI
                             { id: 'guiado', label: 'Estudo Guiado', icon: <BookOpen size={18}/> }, 
                             { id: 'leiseca', label: 'Lei Seca', icon: <Scale size={18}/> }, 
                             { id: 'revisoes', label: 'Revisões', icon: <Calendar size={18}/> }, 
@@ -1051,7 +1068,7 @@ const AdminDashboard = ({ user, onLogout }: { user: User; onLogout: () => void }
                         {id: 'mentoria', label: 'Mentoria', icon: <Map size={18}/>},
                         {id: 'banco_questoes_admin', label: 'Gestão Questões', icon: <Database size={18}/>},
                         {id: 'redacao', label: 'Redação', icon: <PenTool size={18}/>},
-                        {id: 'flashcards_admin', label: 'Admin Flashcards', icon: <Layers size={18}/>}, // NEW
+                        {id: 'flashcards_admin', label: 'Admin Flashcards', icon: <Layers size={18}/>}, // REPOSICIONADO AQUI
                         {id: 'message', label: 'Comunicação', icon: <MessageCircle size={18}/>},
                         {id: 'editais', label: 'Gestão Editais', icon: <List size={18}/>},
                         {id: 'simulados', label: 'Gestão Simulados', icon: <FileText size={18}/>},
@@ -1073,6 +1090,7 @@ const AdminDashboard = ({ user, onLogout }: { user: User; onLogout: () => void }
                         <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800"><h3 className="text-zinc-500 text-sm font-bold uppercase">Materiais</h3><p className="text-3xl font-bold dark:text-white">{materials.length}</p></div>
                         <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800"><h3 className="text-zinc-500 text-sm font-bold uppercase">Editais</h3><p className="text-3xl font-bold dark:text-white">{editais.length}</p></div>
                         <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800"><h3 className="text-zinc-500 text-sm font-bold uppercase">Simulados</h3><p className="text-3xl font-bold dark:text-white">{simulados.length}</p></div>
+                        {/* NOVO CARD PARA QUESTÕES */}
                         <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800"><h3 className="text-zinc-500 text-sm font-bold uppercase">Banco Questões</h3><p className="text-3xl font-bold dark:text-white">{stats.questoes}</p></div>
                         
                         {pendingUsers.length > 0 && <div className="col-span-5 bg-red-900/20 border border-red-900 p-4 rounded-xl flex items-center justify-between"><span className="text-red-200 font-bold flex items-center gap-2"><ShieldAlert/> Existem {pendingUsers.length} solicitações pendentes.</span><button onClick={() => setActiveTab('users')} className="bg-red-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-red-700">Verificar</button></div>}
