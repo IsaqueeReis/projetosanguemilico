@@ -4,7 +4,7 @@ import { User, UserRole, Subject, ScheduleItem, DailyGoal, RevisionItem, Simulad
 import { getStorage, setStorage, checkDailyReset } from './services/storage'; 
 import { globalRepo, userProgressRepo } from './services/repository';
 import { supabase } from './services/supabase'; // Import supabase for direct count query
-import { LogOut, UserIcon, ShieldAlert, BookOpen, BarChart2, Calendar, Target, Award, CheckCircle, MessageCircle, Upload, LayoutDashboard, FileText, CheckSquare, Clock, Trash2, Plus, Pause, Play, GraduationCap, Scale, Users, Bold, Italic, Type, Highlighter, Eye, Search, Video, Edit3, XCircle, TrendingUp, Sun, Moon, Minus, Palette, ArrowUp, ArrowDown, History, StopCircle, Menu, Lock, Megaphone, Bell, Folder, RefreshCw, Eraser, List, Trophy, Crown, Zap, Flame, LayoutList, Image as ImageIcon, Camera, ChevronRight, CornerDownRight, Link as LinkIcon, Gavel, Calculator, Cpu, Book, PenTool, LayoutList as ListIcon, Star, Quote, Settings, ChevronLeft, Map, Check, HelpCircle, Activity, Medal, Layers, ChevronDown, Database } from './components/ui/Icons';
+import { LogOut, UserIcon, ShieldAlert, BookOpen, BarChart2, Calendar, Target, Award, CheckCircle, MessageCircle, Upload, LayoutDashboard, FileText, CheckSquare, Clock, Trash2, Plus, Pause, Play, GraduationCap, Scale, Users, Bold, Italic, Type, Highlighter, Eye, Search, Video, Edit3, XCircle, TrendingUp, Sun, Moon, Minus, Palette, ArrowUp, ArrowDown, History, StopCircle, Menu, Lock, Megaphone, Bell, Folder, RefreshCw, Eraser, List, Trophy, Crown, Zap, Flame, LayoutList, Image as ImageIcon, Camera, ChevronRight, CornerDownRight, Link as LinkIcon, Gavel, Calculator, Cpu, Book, PenTool, LayoutList as ListIcon, Star, Quote, Settings, ChevronLeft, Map, Check, HelpCircle, Activity, Medal, Layers, ChevronDown, Database, Save } from './components/ui/Icons';
 import { StudyHoursChart, QuestionPieChart, StudyDistributionChart } from './components/ui/Charts';
 import TrilhaVencedor from './trilha-vencedor/TrilhaVencedor';
 import { AdminMentorshipPanel } from './mentoria-individual/AdminPanel';
@@ -648,13 +648,254 @@ const AdminDashboard = ({ user, onLogout }: { user: User; onLogout: () => void }
                 )}
 
                 {activeTab === 'materials' && (
-                    <div className="space-y-8">
-                        {/* ... Materials Tab Code ... */}
+                    <div className="space-y-8 animate-fade-in">
+                        <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-lg">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-xl font-bold dark:text-white flex items-center gap-2">
+                                    {editingMaterialId ? <Edit3 size={24} className="text-blue-500"/> : <Plus size={24} className="text-green-500"/>} 
+                                    {editingMaterialId ? 'Editar Material' : 'Adicionar Novo Material'}
+                                </h3>
+                                {editingMaterialId && <button onClick={handleCancelMaterialEdit} className="text-zinc-500 hover:text-red-500 text-sm underline">Cancelar Edição</button>}
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                <div className="col-span-2 md:col-span-1">
+                                    <label className="text-xs font-bold text-zinc-500 uppercase">Título</label>
+                                    <input value={newMatTitle} onChange={e => setNewMatTitle(e.target.value)} placeholder="Ex: Resumo de Crase" className="w-full mt-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2.5 rounded-lg text-zinc-800 dark:text-white outline-none focus:border-red-600" />
+                                </div>
+                                <div className="col-span-2 md:col-span-1">
+                                    <label className="text-xs font-bold text-zinc-500 uppercase">Matéria (Pasta)</label>
+                                    <input value={newMatSubject} onChange={e => setNewMatSubject(e.target.value)} placeholder="Ex: Português" className="w-full mt-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2.5 rounded-lg text-zinc-800 dark:text-white outline-none focus:border-red-600" />
+                                </div>
+                                <div className="col-span-2 md:col-span-1">
+                                    <label className="text-xs font-bold text-zinc-500 uppercase">Assunto (Sub-tópico)</label>
+                                    <input value={newMatTopic} onChange={e => setNewMatTopic(e.target.value)} placeholder="Ex: Sintaxe" className="w-full mt-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2.5 rounded-lg text-zinc-800 dark:text-white outline-none focus:border-red-600" />
+                                </div>
+                                <div className="col-span-2 md:col-span-1">
+                                    <label className="text-xs font-bold text-zinc-500 uppercase">Categoria</label>
+                                    <select value={newMatCategory} onChange={e => setNewMatCategory(e.target.value as any)} className="w-full mt-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2.5 rounded-lg text-zinc-800 dark:text-white outline-none focus:border-red-600">
+                                        <option value="GUIDED">Estudo Guiado (Teoria)</option>
+                                        <option value="LEI_SECA">Lei Seca</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div className="mb-4">
+                                <label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">Conteúdo (Texto Rico)</label>
+                                <RichTextEditor value={newMatContent} onChange={setNewMatContent} />
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                                <div>
+                                    <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1"><FileText size={12}/> Link PDF</label>
+                                    <input value={newMatPdf} onChange={e => setNewMatPdf(e.target.value)} placeholder="https://..." className="w-full mt-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2.5 rounded-lg text-zinc-800 dark:text-white outline-none focus:border-red-600" />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1"><Video size={12}/> Link Vídeo</label>
+                                    <input value={newMatVideo} onChange={e => setNewMatVideo(e.target.value)} placeholder="https://..." className="w-full mt-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2.5 rounded-lg text-zinc-800 dark:text-white outline-none focus:border-red-600" />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1"><ListIcon size={12}/> Link Questões</label>
+                                    <input value={newMatQuestions} onChange={e => setNewMatQuestions(e.target.value)} placeholder="https://..." className="w-full mt-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2.5 rounded-lg text-zinc-800 dark:text-white outline-none focus:border-red-600" />
+                                </div>
+                            </div>
+
+                            <div className="mb-6">
+                                <label className="text-xs font-bold text-zinc-500 uppercase block mb-2">Visibilidade (Planos)</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {plans.map(p => (
+                                        <label key={p.id} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer transition ${matAllowedPlans.includes(p.id) ? 'bg-red-600 border-red-600 text-white' : 'bg-zinc-100 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400'}`}>
+                                            <input type="checkbox" checked={matAllowedPlans.includes(p.id)} onChange={() => toggleAllowedPlan(p.id, matAllowedPlans, setMatAllowedPlans)} className="hidden" />
+                                            <span className="text-sm font-bold">{p.name}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                                <p className="text-[10px] text-zinc-500 mt-1">* Se nenhum for selecionado, será visível para TODOS (Global).</p>
+                            </div>
+
+                            <button onClick={handleSaveMaterial} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg shadow-lg transition flex items-center justify-center gap-2">
+                                <Save size={20}/> {editingMaterialId ? 'Salvar Alterações' : 'Criar Material'}
+                            </button>
+                        </div>
+
+                        <div className="space-y-4">
+                            {sortedSubjects.map(subject => {
+                                const isExpanded = expandedSubjects.includes(subject);
+                                return (
+                                    <div key={subject} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden shadow-sm">
+                                        <div 
+                                            onClick={() => toggleSubjectExpand(subject)}
+                                            className="p-4 bg-zinc-50 dark:bg-zinc-800/50 flex justify-between items-center cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+                                        >
+                                            <h3 className="text-lg font-bold dark:text-white flex items-center gap-3">
+                                                {getSubjectIcon(subject, "text-zinc-500")} {subject}
+                                                <span className="text-xs bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 px-2 py-0.5 rounded-full">{materialsBySubject[subject].length} arquivos</span>
+                                            </h3>
+                                            <div className="flex items-center gap-4">
+                                                <div onClick={(e) => e.stopPropagation()} className="hidden md:flex gap-1">
+                                                    {plans.map(p => (
+                                                        <label key={p.id} className="text-[10px] flex items-center gap-1 bg-zinc-200 dark:bg-zinc-900 px-2 py-1 rounded border border-zinc-300 dark:border-zinc-700 cursor-pointer hover:border-red-500" title={`Aplicar ${p.name} a todos desta matéria`}>
+                                                            <input 
+                                                                type="checkbox" 
+                                                                onChange={(e) => handleSubjectVisibilityChange(subject, p.id, e.target.checked)}
+                                                                checked={materialsBySubject[subject].every(m => m.allowedPlanIds?.includes(p.id))}
+                                                            /> {p.name.substring(0,3)}
+                                                        </label>
+                                                    ))}
+                                                </div>
+                                                {isExpanded ? <ChevronDown size={20} className="text-zinc-400"/> : <ChevronRight size={20} className="text-zinc-400"/>}
+                                            </div>
+                                        </div>
+                                        
+                                        {isExpanded && (
+                                            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                                                {materialsBySubject[subject].sort((a,b) => (a.order || 0) - (b.order || 0)).map((mat, idx) => (
+                                                    <div key={mat.id} className="p-4 flex items-center justify-between hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition group">
+                                                        <div className="flex items-center gap-4">
+                                                            <div className="flex flex-col gap-1">
+                                                                <button onClick={() => handleMoveMaterial(mat, 'up')} className="text-zinc-300 hover:text-white disabled:opacity-20" disabled={idx === 0}><ChevronRight className="-rotate-90" size={14}/></button>
+                                                                <button onClick={() => handleMoveMaterial(mat, 'down')} className="text-zinc-300 hover:text-white disabled:opacity-20" disabled={idx === materialsBySubject[subject].length - 1}><ChevronRight className="rotate-90" size={14}/></button>
+                                                            </div>
+                                                            <div>
+                                                                <h4 className="font-bold text-zinc-800 dark:text-white text-sm">{mat.title}</h4>
+                                                                <div className="flex gap-2 text-xs text-zinc-500 mt-1">
+                                                                    <span className="bg-zinc-100 dark:bg-zinc-800 px-1.5 rounded border border-zinc-200 dark:border-zinc-700">{mat.topic || 'Geral'}</span>
+                                                                    <span className={`px-1.5 rounded border ${mat.category === 'LEI_SECA' ? 'border-yellow-900/50 text-yellow-600' : 'border-blue-900/50 text-blue-500'}`}>{mat.category === 'LEI_SECA' ? 'Lei Seca' : 'Teoria'}</span>
+                                                                    {mat.allowedPlanIds && mat.allowedPlanIds.length > 0 && <span className="text-red-500 flex items-center gap-1"><Lock size={10}/> Restrito</span>}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <button onClick={() => handleEditMaterial(mat)} className="p-2 text-zinc-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded transition"><Edit3 size={18}/></button>
+                                                            <button onClick={(e) => handleDeleteMaterial(e, mat.id)} className="p-2 text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition"><Trash2 size={18}/></button>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                )
+                            })}
+                        </div>
                     </div>
                 )}
                 {activeTab === 'users' && (
-                    <div className="space-y-8">
-                         {/* ... Users Tab Code ... */}
+                    <div className="space-y-8 animate-fade-in">
+                        {/* Cadastro de Novo Aluno */}
+                        <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-lg">
+                            <h3 className="text-xl font-bold dark:text-white mb-4 flex items-center gap-2">
+                                <Plus className="text-green-500"/> Cadastrar Novo Combatente
+                            </h3>
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                                <div>
+                                    <label className="text-xs font-bold text-zinc-500 uppercase">Nome Completo</label>
+                                    <input type="text" value={newUserName} onChange={e => setNewUserName(e.target.value)} className="w-full mt-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2.5 rounded-lg text-zinc-800 dark:text-white outline-none focus:border-green-600" />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-zinc-500 uppercase">E-mail</label>
+                                    <input type="email" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} className="w-full mt-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2.5 rounded-lg text-zinc-800 dark:text-white outline-none focus:border-green-600" />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-zinc-500 uppercase">Senha</label>
+                                    <input type="text" value={newUserPass} onChange={e => setNewUserPass(e.target.value)} className="w-full mt-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2.5 rounded-lg text-zinc-800 dark:text-white outline-none focus:border-green-600" />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-zinc-500 uppercase">Plano Inicial</label>
+                                    <select value={newUserPlan} onChange={e => setNewUserPlan(e.target.value)} className="w-full mt-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2.5 rounded-lg text-zinc-800 dark:text-white outline-none focus:border-green-600">
+                                        <option value="">Sem Plano (Global)</option>
+                                        {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                            <button onClick={handleCreateUser} className="mt-4 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg w-full md:w-auto shadow-lg transition">
+                                Cadastrar Aluno
+                            </button>
+                        </div>
+
+                        {/* Solicitações Pendentes */}
+                        {pendingUsers.length > 0 && (
+                            <div className="bg-red-900/10 border border-red-900/30 p-6 rounded-xl animate-pulse">
+                                <h3 className="text-xl font-bold text-red-500 mb-4 flex items-center gap-2">
+                                    <ShieldAlert/> Solicitações de Acesso ({pendingUsers.length})
+                                </h3>
+                                <div className="space-y-3">
+                                    {pendingUsers.map(u => (
+                                        <div key={u.id} className="flex flex-col md:flex-row md:items-center justify-between bg-zinc-950 p-4 rounded-lg border border-red-900/30 gap-4">
+                                            <div>
+                                                <p className="font-bold text-white text-lg">{u.name}</p>
+                                                <p className="text-zinc-400 text-sm">{u.email}</p>
+                                                <p className="text-xs text-red-400 mt-1">Aguardando aprovação</p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => handleApproveUser(u.id)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold transition shadow-lg">Aprovar</button>
+                                                <button onClick={() => handleRejectUser(u.id)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-bold transition shadow-lg">Rejeitar</button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Lista de Alunos Ativos */}
+                        <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                            <div className="flex justify-between items-center mb-6">
+                                <h3 className="text-xl font-bold dark:text-white flex items-center gap-2">
+                                    <Users className="text-blue-500"/> Tropa Ativa ({activeUsers.length})
+                                </h3>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 gap-4">
+                                {activeUsers.map(u => (
+                                    <div key={u.id} className="flex flex-col md:flex-row md:items-center justify-between bg-zinc-50 dark:bg-zinc-950 p-4 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 transition group">
+                                        <div className="flex items-center gap-4 mb-4 md:mb-0">
+                                            <div className="w-12 h-12 bg-zinc-200 dark:bg-zinc-800 rounded-full flex items-center justify-center text-zinc-500 dark:text-zinc-400 font-bold text-xl border border-zinc-300 dark:border-zinc-700">
+                                                {u.name.charAt(0)}
+                                            </div>
+                                            <div>
+                                                <p className="font-bold text-zinc-800 dark:text-white text-lg">{u.name}</p>
+                                                <p className="text-zinc-500 text-sm">{u.email}</p>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <span className="text-[10px] bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 px-2 py-0.5 rounded font-bold border border-green-200 dark:border-green-900">APROVADO</span>
+                                                    {u.lastStudyDate && <span className="text-[10px] text-zinc-500">Último acesso: {new Date(u.lastStudyDate).toLocaleDateString()}</span>}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="flex flex-col md:flex-row items-center gap-4">
+                                            <div className="w-full md:w-auto">
+                                                <label className="text-[10px] font-bold text-zinc-500 uppercase block mb-1">Plano Atual</label>
+                                                <select 
+                                                    value={u.planId || ""} 
+                                                    onChange={(e) => handleChangeUserPlan(u.id, e.target.value)}
+                                                    className="w-full md:w-40 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 text-zinc-800 dark:text-white text-sm p-2 rounded outline-none focus:border-blue-500"
+                                                >
+                                                    <option value="">Global (Sem Plano)</option>
+                                                    {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                </select>
+                                            </div>
+                                            
+                                            <div className="flex gap-2 w-full md:w-auto">
+                                                <button 
+                                                    onClick={() => setViewingStudentId(u.id)}
+                                                    className="flex-1 md:flex-none bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm font-bold flex items-center justify-center gap-2 transition"
+                                                    title="Ver Painel do Aluno"
+                                                >
+                                                    <Eye size={16}/> Acessar
+                                                </button>
+                                                <button 
+                                                    onClick={() => handleRejectUser(u.id)} 
+                                                    className="flex-1 md:flex-none bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded text-sm font-bold flex items-center justify-center gap-2 transition"
+                                                    title="Excluir Aluno"
+                                                >
+                                                    <Trash2 size={16}/>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                                {activeUsers.length === 0 && <p className="text-center text-zinc-500 py-8 italic">Nenhum aluno ativo no momento.</p>}
+                            </div>
+                        </div>
                     </div>
                 )}
             </main>

@@ -61,20 +61,21 @@ import {
   CornerDownRight,
   Gavel,
   Calculator,
-  Cpu,
-  Book,
-  PenTool,
-  Star,
-  Quote,
-  ChevronLeft,
-  Map,
-  Check,
-  HelpCircle,
-  Activity,
-  Medal,
-  Layers,
-  ChevronDown,
-  Database // Added
+  Cpu, 
+  Book, 
+  PenTool, 
+  Star, 
+  Quote, 
+  ChevronLeft, 
+  Map, 
+  Check, 
+  HelpCircle, 
+  Activity, 
+  Medal, 
+  Layers, 
+  ChevronDown, 
+  Database,
+  Save // Added
 } from 'lucide-react';
 
 export {
@@ -85,5 +86,5 @@ export {
   TrendingUp, Sun, Moon, Minus, Palette, ArrowUp, ArrowDown, History, StopCircle, Menu, Lock,
   Megaphone, Bell, Folder, RefreshCw, Eraser, List, Trophy, Crown, Zap, Flame, LayoutList, Camera,
   CornerDownRight, Gavel, Calculator, Cpu, Book, PenTool, Star, Quote, ChevronLeft, Map, Check, HelpCircle, Activity, Medal, Layers, ChevronDown,
-  Database // Exported
+  Database, Save // Exported
 };

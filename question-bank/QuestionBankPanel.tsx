@@ -79,10 +79,11 @@ export const QuestionBankPanel = ({ studentId }: { studentId: string }) => {
   const loadFilterOptions = async () => {
       const { data } = await supabase.from('qb_questions').select('discipline, board, organ, role, subject, sub_subject, source').eq('is_active', true);
       if (data) {
+          const safeData = data as Record<string, any>[];
           const unique = (key: string): string[] => {
-              const values = (data as any[]).map((item: any) => item[key]);
+              const values = safeData.map(item => item[key]);
               // Filter to ensure only strings are returned and remove nulls/undefined/non-strings
-              const stringValues = values.filter((v: any): v is string => typeof v === 'string' && v.length > 0);
+              const stringValues = values.filter((v): v is string => typeof v === 'string' && v.length > 0);
               return [...new Set(stringValues)].sort();
           };
 
