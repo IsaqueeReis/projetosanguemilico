@@ -1,6 +1,6 @@
 
 import { supabase } from '../services/supabase';
-import { MentorshipPlan } from './types';
+import { MentorshipPlan, MentorshipTask, DAYS_OF_WEEK } from './types';
 
 export const MentorshipStorage = {
   // Busca o plano do aluno no Supabase
@@ -61,5 +61,57 @@ export const MentorshipStorage = {
     
     await MentorshipStorage.savePlan(newPlan);
     return newPlan;
+  },
+
+  // NOVO: Reseta o plano mantendo apenas o que não foi cumprido e reagendando a partir de hoje
+  resetPlanPreservingCompleted: async (studentId: string) => {
+    const currentPlan = await MentorshipStorage.getPlanByStudent(studentId);
+    if (!currentPlan) return;
+
+    // 1. Filtra apenas as não cumpridas
+    const pendingTasks = currentPlan.tasks.filter(t => !t.isCompleted);
+
+    // 2. Define data de início como Hoje
+    const today = new Date();
+    
+    // 3. Reagenda as tarefas sequencialmente a partir de hoje
+    const rescheduledTasks = pendingTasks.map((task, index) => {
+        const newDate = new Date(today);
+        newDate.setDate(today.getDate() + index); // Um dia após o outro
+        
+        const dayIndex = newDate.getDay() === 0 ? 6 : newDate.getDay() - 1; // Ajuste para array (0=Seg)
+        const dayName = DAYS_OF_WEEK[dayIndex < 0 ? 6 : dayIndex];
+        const dateStr = newDate.toLocaleDateString('pt-BR').split('/').reverse().join('-');
+
+        return {
+            ...task,
+            date: dateStr,
+            dayOfWeek: dayName
+        };
+    });
+
+    const newPlan: MentorshipPlan = {
+        ...currentPlan,
+        startDate: today.toISOString().split('T')[0],
+        tasks: rescheduledTasks
+    };
+
+    await MentorshipStorage.savePlan(newPlan);
+    return newPlan;
+  },
+
+  // NOVO: Limpa todas as tarefas (Zera tudo)
+  clearPlan: async (studentId: string) => {
+    const currentPlan = await MentorshipStorage.getPlanByStudent(studentId);
+    if (!currentPlan) return;
+
+    const emptyPlan: MentorshipPlan = {
+        ...currentPlan,
+        tasks: [],
+        messages: [] // Opcional: limpar mensagens também se desejar "reset total"
+    };
+
+    await MentorshipStorage.savePlan(emptyPlan);
+    return emptyPlan;
   }
 };

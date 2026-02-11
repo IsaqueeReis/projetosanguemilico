@@ -13,6 +13,10 @@ export const EssayService = {
     return await supabase.from('essay_topics').insert({ title, description });
   },
 
+  async deleteTopic(id: string) {
+    return await supabase.from('essay_topics').delete().eq('id', id);
+  },
+
   // --- SUBMISSIONS ---
   async getStudentSubmissions(studentId: string): Promise<EssaySubmission[]> {
     const { data } = await supabase

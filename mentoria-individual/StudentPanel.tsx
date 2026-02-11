@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { MentorshipStorage } from './storage';
 import { MentorshipPlan, MentorshipTask, TASK_TYPES, DAYS_OF_WEEK } from './types';
-import { Check, X, Clock, AlertTriangle, Shield } from 'lucide-react';
+import { Check, X, Clock, AlertTriangle, Shield, RefreshCw, Trash2, AlertCircle } from 'lucide-react';
 
 export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => {
   const [plan, setPlan] = useState<MentorshipPlan | null>(null);
@@ -16,12 +16,13 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
   const isoDate = todayDate.toLocaleDateString('pt-BR').split('/').reverse().join('-');
 
   useEffect(() => {
-    const loadPlan = async () => {
-        const loadedPlan = await MentorshipStorage.initPlan(studentId, 'Aluno');
-        setPlan(loadedPlan);
-    };
     loadPlan();
   }, [studentId]);
+
+  const loadPlan = async () => {
+      const loadedPlan = await MentorshipStorage.initPlan(studentId, 'Aluno');
+      setPlan(loadedPlan);
+  };
 
   // Abre o modal ao invés de concluir direto
   const handleTaskClick = (task: MentorshipTask) => {
@@ -72,9 +73,6 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
           
           updatedTasks = [...updatedTasks, continuationTask];
           alert(`Ciente, soldado! Conteúdo reprogramado para ${tDayName} (${tomorrow.toLocaleDateString('pt-BR')}). O comando aprovou seu reforço.`);
-      } else {
-          // Feedback positivo militar
-          // alert("Excelente trabalho! Tópico dominado. Prossiga na missão.");
       }
 
       const updatedPlan = { ...plan, tasks: updatedTasks };
@@ -83,13 +81,42 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
       setTaskToComplete(null);
   };
 
+  // Funções de Gestão do Plano
+  const handleResetPlan = async () => {
+      if (!window.confirm("ATENÇÃO: Isso irá reiniciar seu cronograma a partir de HOJE, mantendo apenas as metas NÃO CUMPRIDAS. As metas já cumpridas serão removidas da visualização. Confirmar reagrupamento?")) return;
+      
+      const newPlan = await MentorshipStorage.resetPlanPreservingCompleted(studentId);
+      if (newPlan) {
+          setPlan(newPlan);
+          alert("Tropa reagrupada! Seu plano foi reiniciado com as pendências a partir de hoje.");
+      }
+  };
+
+  const handleClearPlan = async () => {
+      if (!window.confirm("PERIGO: Isso irá APAGAR TODO O SEU PLANO DE MENTORIA. Todas as metas e históricos serão perdidos. Confirmar Terra Arrasada?")) return;
+      
+      const newPlan = await MentorshipStorage.clearPlan(studentId);
+      if (newPlan) {
+          setPlan(newPlan);
+          alert("Plano destruído. Área limpa.");
+      }
+  };
+
   if (!plan) return <div className="p-8 text-center text-zinc-500">Carregando dados da missão...</div>;
 
   const todaysMessage = plan.messages.find(m => m.date === isoDate);
+  
+  // Lógica para Tarefas de Hoje
   const todaysTasks = plan.tasks.filter(t => {
       if (t.date) return t.date === isoDate;
       return t.dayOfWeek === currentDayName;
   });
+
+  // Lógica para Tarefas Atrasadas (Anteriores a hoje e não cumpridas)
+  const overdueTasks = plan.tasks.filter(t => {
+      if (!t.date) return false; // Se não tem data específica, assume recorrente semanal (não atrasa do jeito tradicional)
+      return t.date < isoDate && !t.isCompleted;
+  }).sort((a,b) => (a.date || '').localeCompare(b.date || ''));
   
   const completedCount = todaysTasks.filter(t => t.isCompleted).length;
   const totalCount = todaysTasks.length;
@@ -115,6 +142,31 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
              <div className="text-red-600 font-bold uppercase text-sm">{currentDayName}</div>
           </div>
         </header>
+
+        {/* ALERTA DE METAS ATRASADAS */}
+        {overdueTasks.length > 0 && (
+            <section className="bg-red-900/10 border border-red-600/50 rounded-2xl p-6 animate-pulse-slow">
+                <h3 className="text-red-500 font-black uppercase text-sm tracking-widest mb-4 flex items-center gap-2">
+                    <AlertTriangle size={18} /> Retaguarda Comprometida ({overdueTasks.length})
+                </h3>
+                <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
+                    {overdueTasks.map(task => {
+                        const typeInfo = TASK_TYPES.find(t => t.type === task.type);
+                        return (
+                            <div key={task.id} onClick={() => handleTaskClick(task)} className="bg-zinc-900/80 border border-red-900/30 p-3 rounded-lg flex justify-between items-center cursor-pointer hover:border-red-500 transition group">
+                                <div>
+                                    <p className="text-white font-bold text-sm">{task.subject}</p>
+                                    <p className="text-xs text-red-400">Era para: {new Date(task.date || '').toLocaleDateString('pt-BR')} • {typeInfo?.label}</p>
+                                </div>
+                                <div className="text-xs font-bold bg-red-600 text-white px-3 py-1 rounded opacity-0 group-hover:opacity-100 transition">
+                                    Pagar Missão
+                                </div>
+                            </div>
+                        )
+                    })}
+                </div>
+            </section>
+        )}
 
         <section className="bg-gradient-to-r from-zinc-900 to-zinc-950 border border-zinc-800 rounded-2xl p-6 md:p-8 relative overflow-hidden shadow-lg">
            <div className="absolute top-0 right-0 p-4 opacity-10">
@@ -202,34 +254,56 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
              </div>
           </section>
 
-          <section className="bg-zinc-900/20 border border-zinc-800 rounded-xl p-6 h-fit">
-            <h3 className="text-zinc-400 font-bold uppercase text-xs tracking-widest mb-4">Próximos Passos</h3>
-            <div className="space-y-4">
-               {DAYS_OF_WEEK.map((day, idx) => {
-                 if (idx < weekDayIndex) return null;
-                 const isToday = day === currentDayName;
-                 const targetDate = new Date(todayDate);
-                 targetDate.setDate(todayDate.getDate() + (idx - weekDayIndex));
-                 const targetIso = targetDate.toLocaleDateString('pt-BR').split('/').reverse().join('-');
+          <div className="space-y-6">
+            <section className="bg-zinc-900/20 border border-zinc-800 rounded-xl p-6 h-fit">
+                <h3 className="text-zinc-400 font-bold uppercase text-xs tracking-widest mb-4">Próximos Passos</h3>
+                <div className="space-y-4">
+                {DAYS_OF_WEEK.map((day, idx) => {
+                    if (idx < weekDayIndex) return null;
+                    const isToday = day === currentDayName;
+                    const targetDate = new Date(todayDate);
+                    targetDate.setDate(todayDate.getDate() + (idx - weekDayIndex));
+                    const targetIso = targetDate.toLocaleDateString('pt-BR').split('/').reverse().join('-');
 
-                 const tasksForDay = plan.tasks.filter(t => {
-                     if (t.date) return t.date === targetIso;
-                     return t.dayOfWeek === day;
-                 });
+                    const tasksForDay = plan.tasks.filter(t => {
+                        if (t.date) return t.date === targetIso;
+                        return t.dayOfWeek === day;
+                    });
 
-                 return (
-                   <div key={day} className={`flex justify-between items-center py-2 border-b border-zinc-800 ${isToday ? 'opacity-100' : 'opacity-60'}`}>
-                     <div className="flex items-center gap-3">
-                       <span className={`text-sm font-bold w-10 ${isToday ? 'text-red-500' : 'text-zinc-500'}`}>{day.substring(0, 3)}</span>
-                       <div className="h-1.5 w-1.5 rounded-full bg-zinc-700"></div>
-                     </div>
-                     <span className="text-xs font-mono text-zinc-400">{tasksForDay.length} missões</span>
-                   </div>
-                 );
-               })}
-            </div>
-            <div className="mt-8 pt-6 border-t border-zinc-800"><p className="text-xs text-zinc-600 text-center leading-relaxed">"A disciplina é a ponte entre metas e realizações."</p></div>
-          </section>
+                    return (
+                    <div key={day} className={`flex justify-between items-center py-2 border-b border-zinc-800 ${isToday ? 'opacity-100' : 'opacity-60'}`}>
+                        <div className="flex items-center gap-3">
+                        <span className={`text-sm font-bold w-10 ${isToday ? 'text-red-500' : 'text-zinc-500'}`}>{day.substring(0, 3)}</span>
+                        <div className="h-1.5 w-1.5 rounded-full bg-zinc-700"></div>
+                        </div>
+                        <span className="text-xs font-mono text-zinc-400">{tasksForDay.length} missões</span>
+                    </div>
+                    );
+                })}
+                </div>
+            </section>
+
+            {/* SEÇÃO DE GERENCIAMENTO DO PLANO */}
+            <section className="bg-zinc-950 border border-zinc-800 rounded-xl p-4">
+                <h3 className="text-zinc-500 font-bold uppercase text-[10px] tracking-widest mb-3 flex items-center gap-2">
+                    <AlertCircle size={12}/> Gestão de Crise (Opções de Plano)
+                </h3>
+                <div className="space-y-2">
+                    <button 
+                        onClick={handleResetPlan}
+                        className="w-full bg-yellow-900/20 hover:bg-yellow-900/40 text-yellow-500 border border-yellow-900/50 text-xs font-bold py-3 rounded-lg flex items-center justify-center gap-2 transition"
+                    >
+                        <RefreshCw size={14}/> Reagrupar Tropa (Resetar Pendentes)
+                    </button>
+                    <button 
+                        onClick={handleClearPlan}
+                        className="w-full bg-red-950/30 hover:bg-red-900/50 text-red-500 border border-red-900/50 text-xs font-bold py-3 rounded-lg flex items-center justify-center gap-2 transition"
+                    >
+                        <Trash2 size={14}/> Terra Arrasada (Limpar Tudo)
+                    </button>
+                </div>
+            </section>
+          </div>
         </div>
       </div>
 

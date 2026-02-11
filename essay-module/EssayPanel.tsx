@@ -124,6 +124,12 @@ export const EssayPanel = ({ user, hasPremium = false }: Props) => {
       loadData();
   };
 
+  const handleDeleteTopic = async (id: string) => {
+      if (!window.confirm("Atenção, Comandante! Tem certeza que deseja excluir este tema?")) return;
+      await EssayService.deleteTopic(id);
+      loadData();
+  };
+
   if (!canAccess) return <div className="relative min-h-screen"><PremiumLock /></div>;
 
   return (
@@ -305,11 +311,19 @@ export const EssayPanel = ({ user, hasPremium = false }: Props) => {
                                 <div key={topic.id} className="bg-zinc-950 border border-zinc-800 p-5 rounded-lg flex flex-col gap-3 group hover:border-zinc-700 transition">
                                     <div className="flex justify-between items-start">
                                         <h4 className="text-white font-bold text-lg">{topic.title}</h4>
-                                        <span className="text-[10px] bg-green-900/20 text-green-500 border border-green-900/50 px-2 py-1 rounded">Ativo</span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-[10px] bg-green-900/20 text-green-500 border border-green-900/50 px-2 py-1 rounded">Ativo</span>
+                                            <button 
+                                                onClick={() => handleDeleteTopic(topic.id)} 
+                                                className="text-zinc-600 hover:text-red-500 p-1 transition" 
+                                                title="Excluir Tema"
+                                            >
+                                                <Trash2 size={16}/>
+                                            </button>
+                                        </div>
                                     </div>
                                     <p className="text-zinc-400 text-sm line-clamp-3 leading-relaxed">{topic.description}</p>
                                     <div className="pt-3 border-t border-zinc-900 flex justify-end">
-                                        {/* Futuramente: Botão de Arquivar/Excluir */}
                                         <span className="text-[10px] text-zinc-600 font-mono">ID: {topic.id.substring(0, 8)}...</span>
                                     </div>
                                 </div>
