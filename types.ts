@@ -143,6 +143,7 @@ export interface EditalSubject {
 export interface Edital {
   id: string;
   title: string;
+  imageUrl?: string;
   subjects: EditalSubject[];
   allowedPlanIds?: string[]; // IDs dos planos que podem ver este edital
 }

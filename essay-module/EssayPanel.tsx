@@ -4,6 +4,7 @@ import { EssayService } from './service';
 import { EssayTopic, EssaySubmission } from './types';
 import { PremiumLock } from '../trilha-vencedor/PremiumLock';
 import { PenTool, Upload, FileText, CheckCircle, Clock, AlertCircle, Link, ChevronRight, X, Star, Send, Plus, List as ListIcon, Trash2, Archive } from 'lucide-react';
+import { Dialog, DialogType } from '../components/ui/Dialog';
 
 interface Props {
   user: any; // User type
@@ -33,6 +34,30 @@ export const EssayPanel = ({ user, hasPremium = false }: Props) => {
   // Estados de Criação de Tema (Admin)
   const [newTopicTitle, setNewTopicTitle] = useState('');
   const [newTopicDesc, setNewTopicDesc] = useState('');
+  const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
+
+  // --- DIALOG SYSTEM ---
+  const [dialog, setDialog] = useState<{
+      isOpen: boolean;
+      type: DialogType;
+      title: string;
+      message: string;
+      onConfirm?: (value?: string) => void;
+      inputPlaceholder?: string;
+  }>({ isOpen: false, type: 'alert', title: '', message: '' });
+
+  const showAlert = (title: string, message: string) => {
+      setDialog({ isOpen: true, type: 'alert', title, message, onConfirm: undefined });
+  };
+
+  const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+      setDialog({ isOpen: true, type: 'confirm', title, message, onConfirm });
+  };
+
+  const handleDialogConfirm = (value?: string) => {
+      if (dialog.onConfirm) dialog.onConfirm(value);
+      setDialog({ ...dialog, isOpen: false });
+  };
 
   const canAccess = hasPremium || isAdminMode;
   
@@ -62,7 +87,7 @@ export const EssayPanel = ({ user, hasPremium = false }: Props) => {
   };
 
   const handleSubmit = async () => {
-    if (!selectedTopic || (!essayContent && !essayFileUrl)) return alert("Escreva o texto OU envie o link do arquivo.");
+    if (!selectedTopic || (!essayContent && !essayFileUrl)) return showAlert('Erro', "Escreva o texto OU envie o link do arquivo.");
     
     await EssayService.submitEssay({
         student_id: user.id,
@@ -73,7 +98,7 @@ export const EssayPanel = ({ user, hasPremium = false }: Props) => {
         status: 'PENDING'
     });
     
-    alert("Redação enviada para o comando! Aguarde a correção.");
+    showAlert('Sucesso', "Redação enviada para o comando! Aguarde a correção.");
     setActiveView('LIST');
     loadData();
   };
@@ -108,26 +133,46 @@ export const EssayPanel = ({ user, hasPremium = false }: Props) => {
         competencies_json: {}
     });
     
-    alert("Correção enviada ao aluno!");
+    showAlert('Sucesso', "Correção enviada ao aluno!");
     setAdminReviewSub(null);
     loadData();
   };
 
-  const handleCreateTopic = async () => {
-      if (!newTopicTitle || !newTopicDesc) return alert("Preencha título e descrição do tema.");
+  const handleCreateOrUpdateTopic = async () => {
+      if (!newTopicTitle || !newTopicDesc) return showAlert('Erro', "Preencha título e descrição do tema.");
       
-      await EssayService.createTopic(newTopicTitle, newTopicDesc);
+      if (editingTopicId) {
+          await EssayService.updateTopic(editingTopicId, newTopicTitle, newTopicDesc);
+          showAlert('Sucesso', "Tema atualizado com sucesso!");
+          setEditingTopicId(null);
+      } else {
+          await EssayService.createTopic(newTopicTitle, newTopicDesc);
+          showAlert('Sucesso', "Novo tema disponibilizado para a tropa!");
+      }
       
-      alert("Novo tema disponibilizado para a tropa!");
       setNewTopicTitle('');
       setNewTopicDesc('');
       loadData();
   };
 
-  const handleDeleteTopic = async (id: string) => {
-      if (!window.confirm("Atenção, Comandante! Tem certeza que deseja excluir este tema?")) return;
-      await EssayService.deleteTopic(id);
-      loadData();
+  const handleEditTopicClick = (topic: EssayTopic) => {
+      setEditingTopicId(topic.id);
+      setNewTopicTitle(topic.title);
+      setNewTopicDesc(topic.description);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEditTopic = () => {
+      setEditingTopicId(null);
+      setNewTopicTitle('');
+      setNewTopicDesc('');
+  };
+
+  const handleDeleteTopic = (id: string) => {
+      showConfirm('Confirmação', "Atenção, Comandante! Tem certeza que deseja excluir este tema?", async () => {
+          await EssayService.deleteTopic(id);
+          loadData();
+      });
   };
 
   if (!canAccess) return <div className="relative min-h-screen"><PremiumLock /></div>;
@@ -293,12 +338,22 @@ export const EssayPanel = ({ user, hasPremium = false }: Props) => {
                                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white h-64 mt-1 outline-none focus:border-red-600 resize-none text-sm leading-relaxed"
                                 />
                             </div>
-                            <button 
-                                onClick={handleCreateTopic}
-                                className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 transition shadow-lg shadow-red-900/20"
-                            >
-                                <Plus size={18}/> Cadastrar Tema
-                            </button>
+                            <div className="flex gap-2">
+                                <button 
+                                    onClick={handleCreateOrUpdateTopic}
+                                    className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 transition shadow-lg shadow-red-900/20"
+                                >
+                                    <Plus size={18}/> {editingTopicId ? 'Atualizar Tema' : 'Cadastrar Tema'}
+                                </button>
+                                {editingTopicId && (
+                                    <button 
+                                        onClick={handleCancelEditTopic}
+                                        className="bg-zinc-700 hover:bg-zinc-600 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center transition"
+                                    >
+                                        Cancelar
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>
 
@@ -313,6 +368,13 @@ export const EssayPanel = ({ user, hasPremium = false }: Props) => {
                                         <h4 className="text-white font-bold text-lg">{topic.title}</h4>
                                         <div className="flex items-center gap-2">
                                             <span className="text-[10px] bg-green-900/20 text-green-500 border border-green-900/50 px-2 py-1 rounded">Ativo</span>
+                                            <button 
+                                                onClick={() => handleEditTopicClick(topic)} 
+                                                className="text-zinc-600 hover:text-blue-500 p-1 transition" 
+                                                title="Editar Tema"
+                                            >
+                                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                                            </button>
                                             <button 
                                                 onClick={() => handleDeleteTopic(topic.id)} 
                                                 className="text-zinc-600 hover:text-red-500 p-1 transition" 
@@ -519,6 +581,15 @@ export const EssayPanel = ({ user, hasPremium = false }: Props) => {
 
       </div>
       )}
+      <Dialog 
+        isOpen={dialog.isOpen} 
+        type={dialog.type} 
+        title={dialog.title} 
+        message={dialog.message} 
+        onConfirm={handleDialogConfirm} 
+        onCancel={() => setDialog({ ...dialog, isOpen: false })} 
+        inputPlaceholder={dialog.inputPlaceholder}
+      />
     </div>
   );
 };

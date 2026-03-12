@@ -6,6 +6,7 @@ import { MentorshipPlan, MentorshipTask, DAYS_OF_WEEK, TASK_TYPES, TaskType, AIP
 import { User, Plan, UserRole, Edital } from '../types';
 import { GoogleGenAI } from "@google/genai";
 import { Brain, Calendar, Check, Save, Sparkles, Trash2, List, FileText, ChevronRight, Activity, Zap, Scale, BarChart2, Plus, X, AlertTriangle } from 'lucide-react';
+import { Dialog, DialogType } from '../components/ui/Dialog';
 
 const API_KEY = process.env.API_KEY || ''; 
 
@@ -42,11 +43,16 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
   const [taskSubject, setTaskSubject] = useState('');
   const [taskDesc, setTaskDesc] = useState('');
 
+  // Estados Edição de Tarefa
+  const [editingTask, setEditingTask] = useState<MentorshipTask | null>(null);
+  const [editTaskForm, setEditTaskForm] = useState({ subject: '', description: '', dayOfWeek: '', type: '' as TaskType });
+
   // --- ESTADOS DO GERADOR IA 2.0 ---
   const [plannerStep, setPlannerStep] = useState<'INPUT' | 'CONFIG' | 'PREVIEW'>('INPUT');
   const [rawEdital, setRawEdital] = useState('');
   const [detectedStructure, setDetectedStructure] = useState<DetectedSubject[]>([]);
   const [subjectConfigs, setSubjectConfigs] = useState<Record<string, SubjectConfig>>({});
+  const [weeklySchedule, setWeeklySchedule] = useState<Record<string, string[]>>({});
   
   // Configs Globais IA
   const [startDatePlanner, setStartDatePlanner] = useState(new Date().toISOString().split('T')[0]);
@@ -66,6 +72,37 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
   const [newExtraGoal, setNewExtraGoal] = useState<ExtraGoalConfig>({
       title: '', type: 'META_EXTRA', description: '', frequency: 'DAILY', selectedDays: []
   });
+
+  // Estado Modal Salvar Edital
+  const [showSaveEditalModal, setShowSaveEditalModal] = useState(false);
+  const [editalTitle, setEditalTitle] = useState('Edital Verticalizado PM');
+
+  // Estado Modal Implantar Plano
+  const [showDeployModal, setShowDeployModal] = useState(false);
+
+  // --- SISTEMA DE DIÁLOGO CUSTOMIZADO ---
+  const [dialog, setDialog] = useState<{
+      isOpen: boolean;
+      type: DialogType;
+      title: string;
+      message: string;
+      onConfirm?: (value?: string) => void;
+      inputPlaceholder?: string;
+  } | null>(null);
+
+  const showAlert = (title: string, message: string) => {
+    setDialog({ isOpen: true, type: 'alert', title, message, onConfirm: undefined, onCancel: () => setDialog(null) });
+  };
+
+  const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setDialog({ isOpen: true, type: 'confirm', title, message, onConfirm, onCancel: () => setDialog(null) });
+  };
+
+  const handleDialogConfirm = (value?: string) => {
+      if (dialog?.onConfirm) dialog.onConfirm(value);
+      setDialog(prev => prev ? { ...prev, isOpen: false } : null);
+  };
+
 
   useEffect(() => {
     if (premiumStudents.length > 0 && !selectedStudentId) {
@@ -97,14 +134,48 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
     return () => { isMounted = false; };
   }, [selectedStudentId, premiumStudents]);
 
+  // Helper para formatar data localmente (YYYY-MM-DD)
+  const getLocalDateStr = (d: Date) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   // --- ACTIONS MANUAIS ---
   const handleAddTask = async () => {
     if (!currentPlan || !taskSubject) return;
+
+    // Calcular próxima ocorrência do dia da semana selecionado
+    const daysMap = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+    const targetIndex = daysMap.indexOf(taskDay);
+    const today = new Date();
+    
+    let targetDate = new Date(today);
+    // Encontrar o próximo dia correspondente (incluindo hoje)
+    while (targetDate.getDay() !== targetIndex) {
+        targetDate.setDate(targetDate.getDate() + 1);
+    }
+    const dateStr = getLocalDateStr(targetDate);
+
     const newTask: MentorshipTask = {
-      id: Date.now().toString(), dayOfWeek: taskDay, type: taskType, subject: taskSubject, description: taskDesc, isCompleted: false
+      id: Date.now().toString(), 
+      dayOfWeek: taskDay, 
+      type: taskType, 
+      subject: taskSubject, 
+      description: taskDesc, 
+      isCompleted: false,
+      date: dateStr // Agora possui data definida
     };
+
     const updatedPlan = { ...currentPlan, tasks: [...currentPlan.tasks, newTask] };
-    await MentorshipStorage.savePlan(updatedPlan);
+    try {
+        await MentorshipStorage.savePlan(updatedPlan);
+    } catch (err) {
+        console.error("Erro ao salvar tarefa:", err);
+        showAlert("Erro de Conexão", "Não foi possível salvar a tarefa. Verifique sua conexão.");
+        return;
+    }
     setCurrentPlan(updatedPlan);
     setTaskSubject(''); setTaskDesc('');
   };
@@ -112,27 +183,65 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
   const handleDeleteTask = async (taskId: string) => {
     if (!currentPlan) return;
     const updatedPlan = { ...currentPlan, tasks: currentPlan.tasks.filter(t => t.id !== taskId) };
-    await MentorshipStorage.savePlan(updatedPlan);
+    try {
+        await MentorshipStorage.savePlan(updatedPlan);
+    } catch (err) {
+        console.error("Erro ao deletar tarefa:", err);
+        showAlert("Erro de Conexão", "Não foi possível deletar a tarefa. Verifique sua conexão.");
+        return;
+    }
     setCurrentPlan(updatedPlan);
+  };
+
+  const handleEditTask = (task: MentorshipTask) => {
+    setEditingTask(task);
+    setEditTaskForm({
+      subject: task.subject,
+      description: task.description || '',
+      dayOfWeek: task.dayOfWeek,
+      type: task.type
+    });
+  };
+
+  const handleSaveEditTask = async () => {
+    if (!currentPlan || !editingTask) return;
+    const updatedTasks = currentPlan.tasks.map(t => 
+      t.id === editingTask.id ? { ...t, ...editTaskForm } : t
+    );
+    const updatedPlan = { ...currentPlan, tasks: updatedTasks };
+    try {
+        await MentorshipStorage.savePlan(updatedPlan);
+    } catch (err) {
+        console.error("Erro ao salvar edição:", err);
+        showAlert("Erro de Conexão", "Não foi possível salvar a edição. Verifique sua conexão.");
+        return;
+    }
+    setCurrentPlan(updatedPlan);
+    setEditingTask(null);
   };
 
   const handleSendMessage = async () => {
     if (!currentPlan || !newMessage) return;
-    const today = new Date().toISOString().split('T')[0];
-    const filteredMessages = currentPlan.messages.filter(m => m.date !== today);
-    const updatedPlan = { ...currentPlan, messages: [...filteredMessages, { id: Date.now().toString(), date: today, content: newMessage, isRead: false }] };
-    await MentorshipStorage.savePlan(updatedPlan);
+    const today = new Date();
+    const todayStr = getLocalDateStr(today);
+    const filteredMessages = currentPlan.messages.filter(m => m.date !== todayStr);
+    const updatedPlan = { ...currentPlan, messages: [...filteredMessages, { id: Date.now().toString(), date: todayStr, content: newMessage, isRead: false }] };
+    try {
+        await MentorshipStorage.savePlan(updatedPlan);
+    } catch (err) {
+        console.error("Erro ao enviar mensagem:", err);
+        showAlert("Erro de Conexão", "Não foi possível enviar a mensagem. Verifique sua conexão.");
+        return;
+    }
     setCurrentPlan(updatedPlan);
     setNewMessage('');
-    alert('Ordem enviada ao aluno!');
+    showAlert('Sucesso', 'Ordem enviada ao aluno!');
   };
-
-  // --- LÓGICA IA 2.0 ---
 
   // Passo 1: Analisar Texto e Detectar Estrutura
   const handleAnalyzeEdital = async () => {
-      if (!rawEdital) return alert("ERRO: Cole o texto do edital para análise.");
-      if (!API_KEY) return alert("ERRO CRÍTICO: Chave de API (API_KEY) não configurada no sistema.");
+      if (!rawEdital) return showAlert("Erro", "Cole o texto do edital para análise.");
+      if (!API_KEY) return showAlert("Erro Crítico", "Chave de API (API_KEY) não configurada no sistema.");
       
       setIsAnalyzing(true);
       try {
@@ -169,32 +278,43 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
 
           setDetectedStructure(data);
           
-          // Inicializa configs padrão
+          // Inicializa configs e horário
           const configs: Record<string, SubjectConfig> = {};
+          const initialSchedule: Record<string, string[]> = {};
+
           data.forEach(s => {
               configs[s.name] = { weight: 2, difficulty: 2 }; // Médio por padrão
           });
+          
+          DAYS_OF_WEEK.forEach(day => {
+              initialSchedule[day] = data.map(s => s.name);
+          });
+
           setSubjectConfigs(configs);
+          setWeeklySchedule(initialSchedule);
           setPlannerStep('CONFIG');
 
       } catch (err) {
           console.error(err);
-          alert("Falha na Inteligência: Não foi possível estruturar o edital. Tente limpar o texto e colar apenas a lista de conteúdos.");
+          showAlert("Falha na Inteligência", "Não foi possível estruturar o edital. Tente limpar o texto e colar apenas a lista de conteúdos.");
       } finally {
           setIsAnalyzing(false);
       }
   };
 
   // Passo 2: Exportar para Edital Global (Opcional)
-  const handleExportToGlobalEdital = async () => {
+  const handleExportToGlobalEdital = () => {
       if (detectedStructure.length === 0) return;
-      const title = prompt("Digite o NOME do edital para a aba 'Gestão de Editais':", "Edital Verticalizado PM");
-      if (!title) return;
+      setShowSaveEditalModal(true);
+  };
+
+  const confirmSaveEdital = async () => {
+      if (!editalTitle.trim()) return showAlert("Atenção", "Digite um nome para o edital.");
 
       try {
           const newEdital: Edital = {
               id: `edital-${Date.now()}-${Math.random().toString(36).substr(2,5)}`,
-              title,
+              title: editalTitle,
               allowedPlanIds: [], // Global por padrão
               subjects: detectedStructure.map((ds, sIdx) => ({
                   id: `sub-${Date.now()}-${sIdx}`,
@@ -207,16 +327,17 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
           };
 
           await globalRepo.saveEdital(newEdital);
-          alert(`Edital "${title}" salvo com sucesso! Verifique na aba 'Gestão de Editais'.`);
+          setShowSaveEditalModal(false);
+          showAlert("Sucesso", `Edital "${editalTitle}" salvo com sucesso! Verifique na aba 'Gestão de Editais'.`);
       } catch (err) {
           console.error(err);
-          alert("Erro ao salvar edital global. Verifique o console.");
+          showAlert("Erro", "Erro ao salvar edital global. Verifique o console.");
       }
   };
 
   // Passo 3: Gerar Cronograma Final (Prompt Atualizado - Ciclo Semanal Rigoroso)
   const handleGenerateSchedule = async () => {
-      if (!API_KEY) return alert("ERRO CRÍTICO: Chave de API ausente.");
+      if (!API_KEY) return showAlert("Erro Crítico", "Chave de API ausente.");
       
       setIsGenerating(true);
       try {
@@ -228,31 +349,17 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
               return `- ${name}: Peso ${c.weight}/3, Dificuldade Aluno ${c.difficulty}/3`;
           }).join('\n');
 
+          // PROMPT FOCADO EM ESTRATÉGIA (NÃO EM DATAS)
           const prompt = `
             Atue como um Mentor Militar de Elite ("Sangue Milico").
-            Objetivo: Criar um cronograma de estudos BRUTAL, DETALHADO e CÍCLICO.
-            Data de Início: ${startDatePlanner}.
+            Objetivo: Criar uma SEQUÊNCIA ESTRATÉGICA DE ESTUDOS (Fila de Prioridade).
+            NÃO GERE DATAS. Apenas a ordem dos assuntos.
             
-            ESTRUTURA DO CICLO SEMANAL (REGRA DE FERRO):
-            1. DIAS DE COMBATE (Segunda a Sábado):
-               - Apenas matérias teóricas e questões.
-               - O aluno estudará exatamente ${subjectsPerDay} MATÉRIAS DIFERENTES POR DIA.
-               - Distribua as matérias listadas no edital para preencher a semana (Seg-Sáb). Se acabar as matérias, repita ou avance. Todas as matérias devem aparecer na semana.
-            
-            2. DIA DE GUERRA (Domingo):
-               - O Domingo é SAGRADO para simulação.
-               - NÃO coloque matérias teóricas no Domingo.
-               - Gere APENAS duas tarefas fixas para todo Domingo:
-                 a) "SIMULADO GERAL" (Type: SIMULADO)
-                 b) "REDAÇÃO TÁTICA" (Type: REVISAO - instrução: "Escrever redação modelo prova")
-
-            ESTRUTURA DA TAREFA (Padrão Sangue Milico) - Apenas para Seg-Sáb:
-            Para CADA matéria agendada no dia, você DEVE gerar EXATAMENTE 3 tarefas sequenciais:
-               - Tarefa 1: "AULA TEÓRICA 1" (Type: AULA)
-               - Tarefa 2: "AULA TEÓRICA 2" (Type: AULA)
-               - Tarefa 3: "BATERIA DE QUESTÕES (Min 10)" (Type: QUESTOES)
-            
-            LEI SECA: ${includeLeiSeca ? 'SIM. Adicione UMA tarefa extra de LEI_SECA por dia (apenas Seg-Sáb).' : 'NÃO.'}
+            REGRAS DE OURO:
+            1. Intercale as matérias para maximizar a retenção (ex: Exatas -> Humanas -> Direito).
+            2. Matérias com MAIOR PESO ou DIFICULDADE devem aparecer com mais frequência no ciclo.
+            3. Cubra TODOS os tópicos listados abaixo.
+            4. IMPORTANTE: Use EXATAMENTE os nomes das matérias listados abaixo. Não altere acentos ou grafia.
             
             PRIORIDADES DE MATÉRIAS:
             ${configContext}
@@ -260,14 +367,13 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
             MATÉRIAS DO EDITAL:
             ${JSON.stringify(detectedStructure)}
             
-            RETORNO JSON (Array Puro):
+            RETORNO JSON (Array Puro de Strings):
+            Retorne uma lista de objetos simples indicando a ordem de estudo.
             [
               {
-                "dayOffset": 0, // 0 = Dia 1, 6 = Domingo (Simulado), etc. Calcule até cobrir todo o edital.
-                "subject": "Nome da Matéria", // Ou "SIMULADO" no domingo
+                "subject": "Nome da Matéria",
                 "topic": "Tópico Específico",
-                "type": "AULA" | "LEI_SECA" | "QUESTOES" | "SIMULADO" | "REVISAO",
-                "instructions": "Instrução breve"
+                "instructions": "Foco principal (ex: lei seca, cálculo, teoria)"
               }
             ]
           `;
@@ -276,41 +382,115 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
               model: 'gemini-2.5-flash',
               contents: { parts: [{ text: prompt }] },
               config: { 
-                  temperature: 0.7,
-                  responseMimeType: "application/json" // CRUCIAL: Garante JSON puro
+                  temperature: 0.5,
+                  responseMimeType: "application/json"
               }
           });
 
           const text = response.text || '';
           const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
           
-          let rawSchedule: AIPlanItem[] = [];
+          let studyQueue: { subject: string; topic: string; instructions: string }[] = [];
           
           try {
-              rawSchedule = JSON.parse(jsonStr);
+              studyQueue = JSON.parse(jsonStr);
           } catch (parseError) {
               console.error("Erro JSON cru:", text);
               throw new Error("A IA retornou um formato inválido. Tente novamente.");
           }
           
-          if (!Array.isArray(rawSchedule) || rawSchedule.length === 0) {
+          if (!Array.isArray(studyQueue) || studyQueue.length === 0) {
               throw new Error("A IA não gerou nenhuma missão. Verifique o edital inserido.");
           }
 
-          setGeneratedItems(rawSchedule);
+          // --- ALGORITMO DE DISTRIBUIÇÃO TEMPORAL (LOCAL) ---
+          const finalSchedule: AIPlanItem[] = [];
+          let currentDate = new Date(startDatePlanner + 'T12:00:00'); // Fix timezone issues
+          let dayOffset = 0;
           
-          // Calcular data de término
-          const maxDayOffset = rawSchedule.reduce((max, item) => Math.max(max, item.dayOffset), 0);
+          // Helper para normalizar strings (remove acentos e lowercase)
+          const normalize = (str: string) => str.trim().toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+          // Group tasks by subject
+          const queuesBySubject: Record<string, typeof studyQueue> = {};
+          studyQueue.forEach(item => {
+              const normSubj = normalize(item.subject);
+              if (!queuesBySubject[normSubj]) queuesBySubject[normSubj] = [];
+              queuesBySubject[normSubj].push(item);
+          });
+
+          let hasMoreTasks = true;
+
+          // Safety break: max 365 days
+          while (hasMoreTasks && dayOffset < 365) {
+              const dayIndex = currentDate.getDay() === 0 ? 6 : currentDate.getDay() - 1;
+              const dayName = DAYS_OF_WEEK[dayIndex < 0 ? 6 : dayIndex];
+              const isSunday = currentDate.getDay() === 0;
+              
+              if (isSunday) {
+                  finalSchedule.push({
+                      dayOffset,
+                      subject: "SIMULADO GERAL",
+                      topic: "Simulado Completo",
+                      type: "SIMULADO",
+                      instructions: "Realizar simulado em condições reais de prova (tempo e isolamento)."
+                  });
+                  finalSchedule.push({
+                      dayOffset,
+                      subject: "REDAÇÃO TÁTICA",
+                      topic: "Redação Modelo Prova",
+                      type: "REVISAO",
+                      instructions: "Escrever redação sobre tema atual ou previsto no edital."
+                  });
+              } else {
+                  const rawAllowedSubjects = weeklySchedule[dayName] || [];
+                  const allowedSubjectsNormalized = rawAllowedSubjects.map(normalize);
+                  
+                  if (includeLeiSeca) {
+                      finalSchedule.push({
+                          dayOffset,
+                          subject: "LEGISLAÇÃO",
+                          topic: "Leitura de Lei Seca",
+                          type: "LEI_SECA",
+                          instructions: "Leitura ativa da legislação prevista no edital (30min)."
+                      });
+                  }
+
+                  // For each allowed subject, pop ONE task
+                  allowedSubjectsNormalized.forEach(normSubj => {
+                      if (queuesBySubject[normSubj] && queuesBySubject[normSubj].length > 0) {
+                          const item = queuesBySubject[normSubj].shift()!;
+                          
+                          finalSchedule.push({
+                              dayOffset,
+                              subject: item.subject,
+                              topic: item.topic,
+                              type: "AULA",
+                              instructions: `Estudar teoria e resolver questões: ${item.instructions}`
+                          });
+                      }
+                  });
+              }
+
+              currentDate.setDate(currentDate.getDate() + 1);
+              dayOffset++;
+              
+              // Check if there are more tasks
+              hasMoreTasks = Object.values(queuesBySubject).some(q => q.length > 0);
+          }
+
+          setGeneratedItems(finalSchedule);
+          
           const [y, m, d] = startDatePlanner.split('-').map(Number);
           const endDate = new Date(y, m - 1, d);
-          endDate.setDate(endDate.getDate() + maxDayOffset);
+          endDate.setDate(endDate.getDate() + dayOffset);
           setCalculatedEndDate(endDate.toLocaleDateString('pt-BR'));
 
           setPlannerStep('PREVIEW');
 
       } catch (err: any) {
           console.error(err);
-          alert(`Erro na Operação Tática: ${err.message || 'Falha desconhecida ao gerar cronograma.'}`);
+          showAlert("Erro na Operação Tática", err.message || 'Falha desconhecida ao gerar cronograma.');
       } finally {
           setIsGenerating(false);
       }
@@ -324,22 +504,250 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
       setShowExtraGoalForm(false);
   };
 
-  // Aplicação Final ao Aluno
-  const handleApplyFinalPlan = async () => {
-      if (!currentPlan) return;
-      if (!window.confirm(`Isso implantará o plano com término previsto em ${calculatedEndDate}. Todas as tarefas serão adicionadas ao calendário do aluno. Confirmar?`)) return;
+  // Gestão de Crise: Reset e Replanejamento
+  const handleResetPlan = async () => {
+    if (!currentPlan) return;
+    
+    showConfirm("Reiniciar Ciclo", "ATENÇÃO: Isso irá apagar todo o progresso do aluno e reiniciar o cronograma a partir de HOJE. Deseja continuar?", async () => {
+        try {
+            const today = new Date();
+            const todayStr = getLocalDateStr(today);
 
+            // Map to track task counts per date to prevent overloading
+            const dateCounts: Record<string, number> = {};
+            const limitPerDay = subjectsPerDay || 2;
+
+            // Helper to find next specific weekday
+            const getNextDayOfWeek = (startDate: Date, dayName: string) => {
+                const days = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+                const targetIndex = days.indexOf(dayName);
+                if (targetIndex === -1) return startDate;
+
+                let d = new Date(startDate);
+                while (d.getDay() !== targetIndex) {
+                    d.setDate(d.getDate() + 1);
+                }
+                return d;
+            };
+
+            const sourceTasks = currentPlan.originalTasks && currentPlan.originalTasks.length > 0 
+                ? currentPlan.originalTasks 
+                : currentPlan.tasks;
+
+            // Ordenar tarefas: com data primeiro (preserva ordem), depois sem data
+            const sortedTasks = [...sourceTasks].sort((a, b) => {
+                if (a.date && b.date) return a.date.localeCompare(b.date);
+                if (a.date) return -1;
+                if (b.date) return 1;
+                return 0;
+            });
+
+            // Encontrar a data mais antiga (início original real das tarefas)
+            const dates = sortedTasks.map(t => t.date).filter(d => d);
+            let originalStart: Date;
+
+            if (dates.length > 0) {
+                // Parse manual para evitar problemas de timezone
+                const [y, m, d] = dates[0]!.split('-').map(Number);
+                originalStart = new Date(y, m - 1, d);
+            } else if (currentPlan.startDate) {
+                const [y, m, d] = currentPlan.startDate.split('-').map(Number);
+                originalStart = new Date(y, m - 1, d);
+            } else {
+                originalStart = new Date(today);
+            }
+
+            // Fallback de segurança
+            if (isNaN(originalStart.getTime())) {
+                console.warn("Data de início original inválida detectada. Usando HOJE como referência.");
+                originalStart = new Date(today);
+            }
+
+            const newTasks = sortedTasks.map(t => {
+                let taskDate = new Date(today);
+                
+                if (t.date) {
+                    // Lógica existente para tarefas com data
+                    const [y, m, d] = t.date.split('-').map(Number);
+                    const oldDate = new Date(y, m - 1, d);
+                    
+                    if (!isNaN(oldDate.getTime())) {
+                        const diffTime = oldDate.getTime() - originalStart.getTime(); 
+                        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+                        taskDate.setDate(today.getDate() + diffDays);
+                    } else {
+                        // Se a data da tarefa for inválida, trata como sem data
+                        taskDate = getNextDayOfWeek(today, t.dayOfWeek);
+                    }
+                } else {
+                    // NOVA Lógica para Tarefas Sem Data (Timeless)
+                    // Encontrar primeiro slot disponível para este dia da semana
+                    let candidateDate = getNextDayOfWeek(today, t.dayOfWeek);
+                    let candidateStr = getLocalDateStr(candidateDate);
+                    
+                    // Enquanto o balde estiver cheio, move para a próxima semana
+                    while ((dateCounts[candidateStr] || 0) >= limitPerDay) {
+                        candidateDate.setDate(candidateDate.getDate() + 7);
+                        candidateStr = getLocalDateStr(candidateDate);
+                    }
+                    taskDate = candidateDate;
+                }
+                
+                const dateStr = getLocalDateStr(taskDate);
+                dateCounts[dateStr] = (dateCounts[dateStr] || 0) + 1;
+
+                const dayIndex = taskDate.getDay() === 0 ? 6 : taskDate.getDay() - 1;
+                const dayName = DAYS_OF_WEEK[dayIndex < 0 ? 6 : dayIndex];
+
+                return {
+                    ...t,
+                    isCompleted: false,
+                    date: dateStr,
+                    dayOfWeek: dayName
+                };
+            });
+
+            const updatedPlan = {
+                ...currentPlan,
+                startDate: todayStr,
+                tasks: newTasks,
+                xp: 0
+            };
+
+            try {
+                await MentorshipStorage.savePlan(updatedPlan);
+                setCurrentPlan(updatedPlan);
+                showAlert("Sucesso", "Plano reiniciado com sucesso! O Dia 1 agora é HOJE.");
+            } catch (error) {
+                console.error("Erro ao salvar plano:", error);
+                showAlert("Erro", "Erro ao salvar o plano.");
+            }
+        } catch (outerError) {
+            console.error("Erro geral no reset:", outerError);
+            showAlert("Erro", "Erro ao processar o reset do plano.");
+        }
+    });
+  };
+
+  const handleWipePlan = async () => {
+    if (!currentPlan) return;
+    
+    showConfirm("Zerar Plano Tático", "ATENÇÃO: Isso EXCLUIRÁ PERMANENTEMENTE todas as missões e mensagens do plano. O aluno ficará sem cronograma. Confirmar destruição total?", async () => {
+        try {
+            const updatedPlan = {
+                ...currentPlan,
+                tasks: [],
+                messages: [],
+                startDate: new Date().toISOString().split('T')[0]
+            };
+
+            try {
+                await MentorshipStorage.savePlan(updatedPlan);
+                setCurrentPlan(updatedPlan);
+                showAlert("Plano Zerado", "Todas as missões foram excluídas. O campo de batalha está limpo.");
+            } catch (error) {
+                console.error("Erro ao zerar plano:", error);
+                showAlert("Erro", "Falha ao zerar o plano.");
+            }
+        } catch (error) {
+            console.error("Erro geral ao zerar plano:", error);
+            showAlert("Erro", "Erro ao processar o zeramento do plano.");
+        }
+    });
+  };
+
+  const handleReplan = async () => {
+    if (!currentPlan) return;
+    
+    showConfirm("Redistribuir Tarefas", "Isso irá redistribuir todas as tarefas pendentes (atrasadas e futuras) uniformemente até a data final original do plano. Continuar?", async () => {
+        const today = new Date();
+        
+        // Data final original
+        const dates = currentPlan.tasks.map(t => t.date).filter(d => d).sort();
+        const lastDateStr = dates[dates.length - 1];
+        if (!lastDateStr) return showAlert("Erro", "Plano sem datas definidas.");
+
+        const [ly, lm, ld] = lastDateStr.split('-').map(Number);
+        let endDate = new Date(ly, lm - 1, ld);
+        
+        // Se o plano acaba hoje ou antes, estende por 7 dias
+        if (endDate <= today) {
+            endDate = new Date(today);
+            endDate.setDate(today.getDate() + 7);
+            showAlert("Aviso", "O plano original já expirou. O prazo foi estendido em 7 dias.");
+        }
+
+        const diffTime = endDate.getTime() - today.getTime();
+        const daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 para incluir hoje
+
+        const pendingTasks = currentPlan.tasks.filter(t => !t.isCompleted);
+        const completedTasks = currentPlan.tasks.filter(t => t.isCompleted);
+
+        // Redistribuir pendingTasks
+        const tasksPerDay = Math.ceil(pendingTasks.length / daysRemaining);
+
+        let currentDayIndex = 0;
+        let tasksInCurrentDay = 0;
+
+        const redistributedTasks = pendingTasks.map(t => {
+            const taskDate = new Date(today);
+            taskDate.setDate(today.getDate() + currentDayIndex);
+            
+            const dayIndex = taskDate.getDay() === 0 ? 6 : taskDate.getDay() - 1;
+            const dayName = DAYS_OF_WEEK[dayIndex < 0 ? 6 : dayIndex];
+
+            tasksInCurrentDay++;
+            if (tasksInCurrentDay >= tasksPerDay) {
+                currentDayIndex++;
+                tasksInCurrentDay = 0;
+            }
+
+            return {
+                ...t,
+                date: getLocalDateStr(taskDate),
+                dayOfWeek: dayName
+            };
+        });
+
+        const finalTasks = [...completedTasks, ...redistributedTasks];
+        finalTasks.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+        const updatedPlan = {
+            ...currentPlan,
+            tasks: finalTasks
+        };
+
+        try {
+            await MentorshipStorage.savePlan(updatedPlan);
+            setCurrentPlan(updatedPlan);
+            showAlert("Sucesso", `Replanejamento concluído! Nova densidade: ~${tasksPerDay} tarefas/dia.`);
+        } catch (err) {
+            console.error("Erro ao replanejar:", err);
+            showAlert("Erro", "Erro ao replanejar o plano.");
+        }
+    });
+  };
+
+  // Aplicação Final ao Aluno
+  const handleApplyFinalPlan = () => {
+      if (!currentPlan) return;
+      setShowDeployModal(true);
+  };
+
+  const confirmDeployPlan = async () => {
+      if (!currentPlan) return;
+      
       try {
           // 1. Converte itens da IA em Tasks
           const aiTasks: MentorshipTask[] = generatedItems.map(item => {
               // Correção de Data: Criar data ao meio-dia para evitar problemas de fuso horário UTC
               const [year, month, day] = startDatePlanner.split('-').map(Number);
-              const date = new Date(year, month - 1, day, 12, 0, 0); 
+              const date = new Date(year, month - 1, day); // Local time
               date.setDate(date.getDate() + item.dayOffset); // dayOffset 0 é o primeiro dia
               
               const dayIndex = date.getDay() === 0 ? 6 : date.getDay() - 1;
               const dayName = DAYS_OF_WEEK[dayIndex < 0 ? 6 : dayIndex];
-              const dateStr = date.toLocaleDateString('pt-BR').split('/').reverse().join('-');
+              const dateStr = getLocalDateStr(date);
 
               return {
                   id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
@@ -358,12 +766,12 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
           
           for (let i = 0; i <= maxDayOffset; i++) {
               const [year, month, day] = startDatePlanner.split('-').map(Number);
-              const date = new Date(year, month - 1, day, 12, 0, 0);
+              const date = new Date(year, month - 1, day);
               date.setDate(date.getDate() + i);
               
               const dayIndex = date.getDay() === 0 ? 6 : date.getDay() - 1;
               const dayName = DAYS_OF_WEEK[dayIndex < 0 ? 6 : dayIndex];
-              const dateStr = date.toLocaleDateString('pt-BR').split('/').reverse().join('-');
+              const dateStr = getLocalDateStr(date);
 
               extraGoals.forEach(goal => {
                   let shouldAdd = false;
@@ -384,24 +792,32 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
               });
           }
 
+          const newTasks = [...currentPlan.tasks, ...aiTasks, ...extraTasks];
           const updatedPlan = {
               ...currentPlan,
-              tasks: [...currentPlan.tasks, ...aiTasks, ...extraTasks]
+              tasks: newTasks,
+              originalTasks: newTasks,
+              xp: currentPlan.xp || 0
           };
 
-          await MentorshipStorage.savePlan(updatedPlan);
-          setCurrentPlan(updatedPlan);
-          
-          // Reset
-          setPlannerStep('INPUT');
-          setGeneratedItems([]);
-          setExtraGoals([]);
-          setActiveMode('DAILY');
-          alert("Plano de Guerra implantado com sucesso! O cronograma foi atualizado.");
-
+          try {
+              await MentorshipStorage.savePlan(updatedPlan);
+              setCurrentPlan(updatedPlan);
+              
+              // Reset
+              setPlannerStep('INPUT');
+              setGeneratedItems([]);
+              setExtraGoals([]);
+              setActiveMode('DAILY');
+              setShowDeployModal(false);
+              showAlert("Sucesso", "Plano de Guerra implantado com sucesso! O cronograma foi atualizado.");
+          } catch (err) {
+              console.error(err);
+              showAlert("Erro Crítico", "Erro crítico ao salvar o plano. Tente novamente.");
+          }
       } catch (err) {
           console.error(err);
-          alert("Erro crítico ao salvar o plano. Tente novamente.");
+          showAlert("Erro Crítico", "Erro crítico ao processar o plano.");
       }
   };
 
@@ -510,6 +926,78 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
                                       </div>
                                   ))}
                               </div>
+                          </div>
+                      </div>
+
+                      {/* QUADRO HORÁRIO SEMANAL */}
+                      <div className="bg-zinc-900/50 p-6 rounded-xl border border-zinc-800 lg:col-span-2">
+                          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                              <div>
+                                  <h3 className="text-white font-bold uppercase text-sm tracking-wide flex items-center gap-2">
+                                      <Calendar size={16} className="text-blue-500"/>
+                                      Quadro Horário Semanal
+                                  </h3>
+                                  <p className="text-xs text-zinc-500 mt-1">Selecione as matérias para cada dia. A IA irá gerar 1 meta por matéria selecionada.</p>
+                              </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                              {DAYS_OF_WEEK.map(day => (
+                                  <div key={day} className="bg-zinc-950 p-3 rounded border border-zinc-800">
+                                      <div className="flex justify-between items-center mb-3 pb-2 border-b border-zinc-800">
+                                          <span className="text-sm font-bold text-white uppercase">{day}</span>
+                                          {day !== 'Domingo' && (
+                                              <div className="flex gap-2">
+                                                  <button 
+                                                      onClick={() => setWeeklySchedule(prev => ({ ...prev, [day]: detectedStructure.map(s => s.name) }))}
+                                                      className="text-[10px] text-zinc-500 hover:text-white"
+                                                  >
+                                                      Todos
+                                                  </button>
+                                                  <button 
+                                                      onClick={() => setWeeklySchedule(prev => ({ ...prev, [day]: [] }))}
+                                                      className="text-[10px] text-zinc-500 hover:text-white"
+                                                  >
+                                                      Nenhum
+                                                  </button>
+                                              </div>
+                                          )}
+                                      </div>
+                                      
+                                      {day === 'Domingo' ? (
+                                          <div className="text-xs text-zinc-500 italic text-center py-2">
+                                              Simulado e Redação (Fixo)
+                                          </div>
+                                      ) : (
+                                          <div className="flex flex-wrap gap-1.5">
+                                              {detectedStructure.map(subj => {
+                                                  const isSelected = weeklySchedule[day]?.includes(subj.name);
+                                                  return (
+                                                      <button
+                                                          key={subj.name}
+                                                          onClick={() => {
+                                                              setWeeklySchedule(prev => {
+                                                                  const current = prev[day] || [];
+                                                                  const updated = current.includes(subj.name)
+                                                                      ? current.filter(s => s !== subj.name)
+                                                                      : [...current, subj.name];
+                                                                  return { ...prev, [day]: updated };
+                                                              });
+                                                          }}
+                                                          className={`text-[10px] px-2 py-1 rounded border transition-all ${
+                                                              isSelected 
+                                                                  ? 'bg-blue-900/30 text-blue-400 border-blue-900' 
+                                                                  : 'bg-zinc-900 text-zinc-600 border-zinc-800 hover:border-zinc-700'
+                                                          }`}
+                                                      >
+                                                          {subj.name}
+                                                      </button>
+                                                  );
+                                              })}
+                                          </div>
+                                      )}
+                                  </div>
+                              ))}
                           </div>
                       </div>
 
@@ -677,15 +1165,184 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
               <button onClick={handleAddTask} className="w-full bg-zinc-100 hover:bg-white text-black font-bold py-2 rounded-lg flex items-center justify-center gap-2 mt-2 transition-all"><Icon name="plus" /> Adicionar ao Plano</button>
             </div>
           </div>
+
+          <div className="bg-zinc-900/50 p-6 rounded-xl border border-zinc-800">
+            <h3 className="text-white font-bold mb-4 uppercase text-sm tracking-wide flex items-center gap-2">
+                <AlertTriangle size={16} className="text-yellow-500"/> Gestão de Crise
+            </h3>
+            <div className="space-y-3">
+                <button onClick={handleReplan} className="w-full bg-yellow-600/20 hover:bg-yellow-600/30 text-yellow-500 border border-yellow-600/50 font-bold py-2 rounded-lg flex items-center justify-center gap-2 transition-all text-xs uppercase">
+                    <Scale size={14}/> Replanejar Atrasos (Manter Prazo)
+                </button>
+                <button onClick={handleResetPlan} className="w-full bg-red-600/20 hover:bg-red-600/30 text-red-500 border border-red-600/50 font-bold py-2 rounded-lg flex items-center justify-center gap-2 transition-all text-xs uppercase">
+                    <Trash2 size={14}/> Resetar Plano (Reiniciar Hoje)
+                </button>
+                <button onClick={handleWipePlan} className="w-full bg-red-950/40 hover:bg-red-900/50 text-red-700 border border-red-900/50 font-bold py-2 rounded-lg flex items-center justify-center gap-2 transition-all text-xs uppercase">
+                    <Trash2 size={14}/> Zerar Plano (Excluir Tudo)
+                </button>
+            </div>
+          </div>
         </div>
         <div className="lg:col-span-2">
           <div className="bg-zinc-900/30 rounded-xl border border-zinc-800 overflow-hidden">
              <div className="p-4 bg-zinc-900 border-b border-zinc-800 flex justify-between items-center"><h3 className="font-bold text-white uppercase text-sm tracking-wide">Cronograma Tático Semanal</h3><span className="text-xs text-zinc-500 bg-zinc-950 px-2 py-1 rounded border border-zinc-800">Visualização de Comando</span></div>
-             <div className="divide-y divide-zinc-800">{DAYS_OF_WEEK.map(day => { const dayTasks = currentPlan.tasks.filter(t => t.dayOfWeek === day); return (<div key={day} className="flex flex-col md:flex-row md:items-start p-4 hover:bg-zinc-900/50 transition-colors"><div className="w-24 flex-shrink-0 mb-2 md:mb-0"><span className={`text-sm font-bold uppercase tracking-wider ${dayTasks.length > 0 ? 'text-white' : 'text-zinc-600'}`}>{day.substring(0, 3)}</span></div><div className="flex-1 space-y-2">{dayTasks.length === 0 && <span className="text-xs text-zinc-700 italic">Sem missões</span>}{dayTasks.map(task => { const typeInfo = TASK_TYPES.find(t => t.type === task.type); return (<div key={task.id} className="flex items-center justify-between bg-zinc-950 border border-zinc-800 p-2 rounded group hover:border-zinc-600 transition-colors"><div className="flex items-center gap-3"><div className={`w-2 h-8 rounded ${typeInfo?.color || 'bg-gray-500'}`}></div><div><p className="text-sm font-bold text-zinc-200">{task.subject}</p><p className="text-xs text-zinc-500">{typeInfo?.label} {task.description && `• ${task.description}`}</p></div></div><button onClick={() => handleDeleteTask(task.id)} className="p-2 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"><Icon name="trash" /></button></div>); })}</div></div>); })}</div>
+             <div className="divide-y divide-zinc-800">{DAYS_OF_WEEK.map(day => { const dayTasks = currentPlan.tasks.filter(t => t.dayOfWeek === day); return (<div key={day} className="flex flex-col md:flex-row md:items-start p-4 hover:bg-zinc-900/50 transition-colors"><div className="w-24 flex-shrink-0 mb-2 md:mb-0"><span className={`text-sm font-bold uppercase tracking-wider ${dayTasks.length > 0 ? 'text-white' : 'text-zinc-600'}`}>{day.substring(0, 3)}</span></div><div className="flex-1 space-y-2">{dayTasks.length === 0 && <span className="text-xs text-zinc-700 italic">Sem missões</span>}{dayTasks.map(task => { const typeInfo = TASK_TYPES.find(t => t.type === task.type); return (<div key={task.id} className="flex items-center justify-between bg-zinc-950 border border-zinc-800 p-2 rounded group hover:border-zinc-600 transition-colors"><div className="flex items-center gap-3"><div className={`w-2 h-8 rounded ${typeInfo?.color || 'bg-gray-500'}`}></div><div><p className="text-sm font-bold text-zinc-200">{task.subject}</p><p className="text-xs text-zinc-500">{typeInfo?.label} {task.description && `• ${task.description}`}</p></div></div><div className="flex items-center gap-1"><button onClick={() => handleEditTask(task)} className="p-2 text-zinc-600 hover:text-blue-500 hover:bg-blue-500/10 rounded transition-colors"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg></button><button onClick={() => handleDeleteTask(task.id)} className="p-2 text-zinc-600 hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"><Icon name="trash" /></button></div></div>); })}</div></div>); })}</div>
           </div>
         </div>
       </div>
       )}
+      
+      {/* MODAL EDITAR TAREFA */}
+      {editingTask && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 w-full max-w-md shadow-2xl">
+                  <h3 className="text-xl font-bold text-white mb-4 uppercase tracking-tight">Editar Missão</h3>
+                  <div className="space-y-4">
+                      <div>
+                          <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Dia da Semana</label>
+                          <select 
+                              value={editTaskForm.dayOfWeek}
+                              onChange={(e) => setEditTaskForm({...editTaskForm, dayOfWeek: e.target.value})}
+                              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:outline-none focus:border-red-600 transition-colors"
+                          >
+                              {DAYS_OF_WEEK.map(d => <option key={d} value={d}>{d}</option>)}
+                          </select>
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Tipo</label>
+                          <select 
+                              value={editTaskForm.type}
+                              onChange={(e) => setEditTaskForm({...editTaskForm, type: e.target.value as TaskType})}
+                              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:outline-none focus:border-red-600 transition-colors"
+                          >
+                              {TASK_TYPES.map(t => <option key={t.type} value={t.type}>{t.label}</option>)}
+                          </select>
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Matéria</label>
+                          <input 
+                              type="text" 
+                              value={editTaskForm.subject}
+                              onChange={(e) => setEditTaskForm({...editTaskForm, subject: e.target.value})}
+                              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:outline-none focus:border-red-600 transition-colors"
+                          />
+                      </div>
+                      <div>
+                          <label className="block text-xs font-bold text-zinc-500 uppercase mb-1">Instruções / Tópico</label>
+                          <textarea 
+                              value={editTaskForm.description}
+                              onChange={(e) => setEditTaskForm({...editTaskForm, description: e.target.value})}
+                              className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-white focus:outline-none focus:border-red-600 transition-colors min-h-[100px]"
+                          />
+                      </div>
+                  </div>
+                  <div className="flex gap-3 mt-6">
+                      <button 
+                          onClick={() => setEditingTask(null)}
+                          className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 rounded-xl transition-colors border border-zinc-700"
+                      >
+                          CANCELAR
+                      </button>
+                      <button 
+                          onClick={handleSaveEditTask}
+                          className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl transition-colors shadow-lg"
+                      >
+                          SALVAR
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* MODAL SALVAR EDITAL */}
+      {showSaveEditalModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-md w-full shadow-2xl relative">
+                  <div className="text-center mb-6">
+                      <h3 className="text-xl font-black text-white uppercase tracking-tight mb-2">Salvar Edital Global</h3>
+                      <p className="text-zinc-400 text-xs">Este edital ficará disponível para todos os alunos na aba 'Gestão de Editais'.</p>
+                  </div>
+                  
+                  <div className="space-y-4">
+                      <div>
+                          <label className="text-xs text-zinc-500 font-bold uppercase block mb-1">Nome do Edital</label>
+                          <input 
+                              type="text" 
+                              value={editalTitle} 
+                              onChange={(e) => setEditalTitle(e.target.value)}
+                              className="w-full bg-zinc-950 border border-zinc-800 rounded p-3 text-white outline-none focus:border-blue-600"
+                              placeholder="Ex: Edital Verticalizado PM-SP 2026"
+                              autoFocus
+                          />
+                      </div>
+
+                      <div className="flex gap-3 pt-2">
+                          <button 
+                              onClick={() => setShowSaveEditalModal(false)}
+                              className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold py-3 rounded-xl transition-colors"
+                          >
+                              Cancelar
+                          </button>
+                          <button 
+                              onClick={confirmSaveEdital}
+                              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-transform active:scale-95 shadow-lg flex items-center justify-center gap-2"
+                          >
+                              <Save size={18} /> Salvar
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+      {/* MODAL IMPLANTAR PLANO */}
+      {showDeployModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-md w-full shadow-2xl relative">
+                  <div className="absolute -top-6 left-1/2 transform -translate-x-1/2">
+                      <div className="w-12 h-12 bg-zinc-800 rounded-full border-4 border-[#09090b] flex items-center justify-center text-green-600 shadow-lg">
+                          <Zap size={24} fill="currentColor"/>
+                      </div>
+                  </div>
+
+                  <div className="text-center mb-6 mt-4">
+                      <h3 className="text-xl font-black text-white uppercase tracking-tight mb-2">Implantar Plano de Guerra</h3>
+                      <p className="text-zinc-300 text-sm leading-relaxed">
+                          Você está prestes a adicionar <span className="text-white font-bold">{generatedItems.length} novas missões</span> ao calendário do aluno.
+                          <br/><br/>
+                          <span className="block bg-zinc-950 p-2 rounded border border-zinc-800 text-xs font-mono text-zinc-400">
+                              Término Previsto: <span className="text-red-500 font-bold">{calculatedEndDate}</span>
+                          </span>
+                      </p>
+                  </div>
+                  
+                  <div className="space-y-3">
+                      <button 
+                          onClick={confirmDeployPlan}
+                          className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-lg"
+                      >
+                          <Check size={20} /> CONFIRMAR IMPLANTAÇÃO
+                      </button>
+
+                      <button 
+                          onClick={() => setShowDeployModal(false)}
+                          className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white font-bold py-3 rounded-xl transition-colors border border-zinc-700"
+                      >
+                          CANCELAR OPERAÇÃO
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+      
+      <Dialog
+        isOpen={dialog?.isOpen || false}
+        type={dialog?.type || 'alert'}
+        title={dialog?.title || ''}
+        message={dialog?.message || ''}
+        onConfirm={handleDialogConfirm}
+        onCancel={() => setDialog(null)}
+        inputPlaceholder={dialog?.inputPlaceholder}
+      />
     </div>
   );
 };

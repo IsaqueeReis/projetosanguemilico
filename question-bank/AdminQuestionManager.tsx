@@ -1,10 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { AIQuestionImport } from './AIQuestionImport';
+import { AIGenerateQuestions } from './AIGenerateQuestions';
 import { QuestionBankService } from './service';
 import { QBQuestion, QuestionType, Difficulty } from './types';
 import { AIQuestionExtraction } from '../essay-module/types';
 import { Save } from 'lucide-react';
+import { Dialog, DialogType } from '../components/ui/Dialog';
 
 export const AdminQuestionManager = () => {
   const [statement, setStatement] = useState('');
@@ -21,6 +23,23 @@ export const AdminQuestionManager = () => {
   const [alternatives, setAlternatives] = useState<{label: string, text: string, is_correct: boolean}[]>([]);
   const [justification, setJustification] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [dialog, setDialog] = useState<{
+      isOpen: boolean;
+      type: DialogType;
+      title: string;
+      message: string;
+      onConfirm?: (value?: string) => void;
+      inputPlaceholder?: string;
+  } | null>(null);
+
+  const showAlert = (title: string, message: string) => {
+    setDialog({ isOpen: true, type: 'alert', title, message, onConfirm: undefined, onCancel: () => setDialog(null) });
+  };
+
+  const handleDialogConfirm = (value?: string) => {
+      if (dialog?.onConfirm) dialog.onConfirm(value);
+      setDialog(prev => prev ? { ...prev, isOpen: false } : null);
+  };
 
   // Efeito para ajustar automaticamente as alternativas quando o TIPO muda
   useEffect(() => {
@@ -55,8 +74,8 @@ export const AdminQuestionManager = () => {
   };
 
   const handleSave = async () => {
-    if (!statement || !discipline || !board) return alert("Preencha Enunciado, Banca e Disciplina.");
-    if (alternatives.filter(a => a.is_correct).length !== 1) return alert("Marque exatamente uma alternativa correta.");
+    if (!statement || !discipline || !board) return showAlert("Erro", "Preencha Enunciado, Banca e Disciplina.");
+    if (alternatives.filter(a => a.is_correct).length !== 1) return showAlert("Erro", "Marque exatamente uma alternativa correta.");
 
     setIsSaving(true);
     try {
@@ -76,7 +95,7 @@ export const AdminQuestionManager = () => {
             alternatives
         });
         
-        alert("Questão salva no Banco de Dados com sucesso!");
+        showAlert("Sucesso", "Questão salva no Banco de Dados com sucesso!");
         
         // Reset parcial para facilitar cadastros sequenciais
         setStatement('');
@@ -91,7 +110,7 @@ export const AdminQuestionManager = () => {
         setJustification('');
     } catch (error) {
         console.error(error);
-        alert("Erro ao salvar questão. Verifique o console.");
+        showAlert("Erro", "Erro ao salvar questão. Verifique o console.");
     } finally {
         setIsSaving(false);
     }
@@ -102,7 +121,10 @@ export const AdminQuestionManager = () => {
       <h2 className="text-xl font-bold text-white mb-6 uppercase tracking-wider">Gestão de Questões</h2>
       
       {/* Módulo IA */}
-      <AIQuestionImport onExtractionComplete={handleAIComplete} />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <AIQuestionImport onExtractionComplete={handleAIComplete} />
+        <AIGenerateQuestions />
+      </div>
 
       {/* Formulário Principal */}
       <div className="space-y-4 bg-zinc-900/50 p-6 rounded-xl border border-zinc-800">
@@ -221,6 +243,16 @@ export const AdminQuestionManager = () => {
             <Save size={18}/> {isSaving ? 'Salvando...' : 'Salvar Questão'}
         </button>
       </div>
+
+      <Dialog
+        isOpen={dialog?.isOpen || false}
+        type={dialog?.type || 'alert'}
+        title={dialog?.title || ''}
+        message={dialog?.message || ''}
+        onConfirm={handleDialogConfirm}
+        onCancel={() => setDialog(null)}
+        inputPlaceholder={dialog?.inputPlaceholder}
+      />
     </div>
   );
 };

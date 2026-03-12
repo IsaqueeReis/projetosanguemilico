@@ -133,5 +133,10 @@ export const globalRepo = {
     },
     saveTutorialVideo: async (url: string): Promise<void> => {
         await supabase.from('app_config').upsert({ key: 'tutorial_video', value: { url: url } });
+    },
+    getLogins: async (): Promise<any[]> => {
+        const { data, error } = await supabase.from('user_logins').select('*, users(name, email)');
+        if (error) { console.error(error); return []; }
+        return data;
     }
 };

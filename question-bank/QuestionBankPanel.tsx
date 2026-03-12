@@ -5,6 +5,7 @@ import { QBQuestion, QBFilters, Difficulty, QuestionType, QBNotebook } from './t
 import { QuestionBankService } from './service';
 import { supabase } from '../services/supabase';
 import { QuestionPieChart, EvolutionChart, PrecisionWaveChart } from '../components/ui/Charts';
+import { Dialog, DialogType } from '../components/ui/Dialog';
 
 export const QuestionBankPanel = ({ studentId }: { studentId: string }) => {
   // Navigation Tabs
@@ -62,6 +63,30 @@ export const QuestionBankPanel = ({ studentId }: { studentId: string }) => {
       start: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0], // Últimos 30 dias por padrão
       end: new Date().toISOString().split('T')[0]
   });
+
+  // Dialog State
+  const [dialog, setDialog] = useState<{
+      isOpen: boolean;
+      type: DialogType;
+      title: string;
+      message: string;
+      onConfirm?: (value?: string) => void;
+      onCancel?: () => void;
+      inputPlaceholder?: string;
+  } | null>(null);
+
+  const showAlert = (title: string, message: string) => {
+    setDialog({ isOpen: true, type: 'alert', title, message, onConfirm: undefined, onCancel: () => setDialog(null) });
+  };
+
+  const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setDialog({ isOpen: true, type: 'confirm', title, message, onConfirm, onCancel: () => setDialog(null) });
+  };
+
+  const handleDialogConfirm = (value?: string) => {
+      if (dialog?.onConfirm) dialog.onConfirm(value);
+      setDialog(prev => prev ? { ...prev, isOpen: false } : null);
+  };
 
   // Load Initial Data
   useEffect(() => {
@@ -181,19 +206,20 @@ export const QuestionBankPanel = ({ studentId }: { studentId: string }) => {
       if(!currentQ) return;
       await QuestionBankService.addQuestionToNotebook(studentId, notebookId, currentQ.id);
       setShowNotebookModal(false);
-      alert('Questão adicionada ao caderno com sucesso!');
+      showAlert('Sucesso', 'Questão adicionada ao caderno com sucesso!');
       loadNotebooks(); // Refresh counts
   };
 
   const handleDeleteNotebook = async (notebookId: string) => {
-      if(!window.confirm('Tem certeza que deseja excluir este caderno?')) return;
-      await QuestionBankService.deleteNotebook(studentId, notebookId);
-      loadNotebooks();
-      if(selectedNotebookForFilter === notebookId) {
-          setSelectedNotebookForFilter(null);
-          setFilters(prev => ({...prev, notebookId: undefined}));
-          loadQuestions({...filters, notebookId: undefined});
-      }
+      showConfirm('Excluir Caderno', 'Tem certeza que deseja excluir este caderno?', async () => {
+          await QuestionBankService.deleteNotebook(studentId, notebookId);
+          loadNotebooks();
+          if(selectedNotebookForFilter === notebookId) {
+              setSelectedNotebookForFilter(null);
+              setFilters(prev => ({...prev, notebookId: undefined}));
+              loadQuestions({...filters, notebookId: undefined});
+          }
+      });
   };
 
   const openNotebook = (notebookId: string) => {
@@ -744,6 +770,15 @@ export const QuestionBankPanel = ({ studentId }: { studentId: string }) => {
           </div>
       )}
 
+      <Dialog
+        isOpen={dialog?.isOpen || false}
+        type={dialog?.type || 'alert'}
+        title={dialog?.title || ''}
+        message={dialog?.message || ''}
+        onConfirm={handleDialogConfirm}
+        onCancel={() => setDialog(null)}
+        inputPlaceholder={dialog?.inputPlaceholder}
+      />
     </div>
   );
 };

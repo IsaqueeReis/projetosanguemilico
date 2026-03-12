@@ -4,23 +4,49 @@ import { User, UserRole, Subject, ScheduleItem, DailyGoal, RevisionItem, Simulad
 import { getStorage, setStorage, checkDailyReset } from './services/storage'; 
 import { globalRepo, userProgressRepo } from './services/repository';
 import { supabase } from './services/supabase'; // Import supabase for direct count query
-import { LogOut, UserIcon, ShieldAlert, BookOpen, BarChart2, Calendar, Target, Award, CheckCircle, MessageCircle, Upload, LayoutDashboard, FileText, CheckSquare, Clock, Trash2, Plus, Pause, Play, GraduationCap, Scale, Users, Bold, Italic, Type, Highlighter, Eye, Search, Video, Edit3, XCircle, TrendingUp, Sun, Moon, Minus, Palette, ArrowUp, ArrowDown, History, StopCircle, Menu, Lock, Megaphone, Bell, Folder, RefreshCw, Eraser, List, Trophy, Crown, Zap, Flame, LayoutList, Image as ImageIcon, Camera, ChevronRight, CornerDownRight, Link as LinkIcon, Gavel, Calculator, Cpu, Book, PenTool, LayoutList as ListIcon, Star, Quote, Settings, ChevronLeft, Map, Check, HelpCircle, Activity, Medal, Layers, ChevronDown, Database, Save } from './components/ui/Icons';
+import { LogOut, UserIcon, ShieldAlert, BookOpen, BarChart2, Calendar, Target, Award, CheckCircle, MessageCircle, Upload, LayoutDashboard, FileText, CheckSquare, Clock, Trash2, Plus, Pause, Play, GraduationCap, Scale, Users, Bold, Italic, Type, Highlighter, Eye, Search, Video, Edit3, XCircle, TrendingUp, Sun, Moon, Minus, Palette, ArrowUp, ArrowDown, History, StopCircle, Menu, Lock, Megaphone, Bell, Folder, RefreshCw, Eraser, List, Trophy, Crown, Zap, Flame, LayoutList, Image as ImageIcon, Camera, ChevronRight, CornerDownRight, Link as LinkIcon, Gavel, Calculator, Cpu, Book, PenTool, LayoutList as ListIcon, Star, Quote, Settings, ChevronLeft, Map, Check, HelpCircle, Activity, Medal, Layers, ChevronDown, Database, Save, Baby, Skull, ChevronUp, ChevronsUp } from './components/ui/Icons';
 import { StudyHoursChart, QuestionPieChart, StudyDistributionChart } from './components/ui/Charts';
 import TrilhaVencedor from './trilha-vencedor/TrilhaVencedor';
 import { AdminMentorshipPanel } from './mentoria-individual/AdminPanel';
+import { AdminLoginsPanel } from './mentoria-individual/AdminLoginsPanel';
 import { StudentMentorshipPanel } from './mentoria-individual/StudentPanel';
 import { MentorshipStorage } from './mentoria-individual/storage';
 import { PremiumLock } from './trilha-vencedor/PremiumLock';
 import { QuestionBankPanel } from './question-bank/QuestionBankPanel';
 import { EssayPanel } from './essay-module/EssayPanel';
 import { AdminQuestionManager } from './question-bank/AdminQuestionManager';
+import { LeiSecaViewer } from './components/LeiSecaViewer';
+import { Dialog, DialogType } from './components/ui/Dialog';
 
-// ... [Keep ALL existing HELPERS (formatTime, getSubjectIcon, etc.) unchanged] ...
 const formatTime = (secs: number) => {
     const h = Math.floor(secs / 3600);
     const m = Math.floor((secs % 3600) / 60);
     const s = secs % 60;
     return `${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+};
+
+const getAchievementIcon = (icon: string, className: string = "w-8 h-8") => {
+    switch(icon) {
+        case '🐣': return <Baby className={className} />;
+        case 'ᐱ': return <ChevronUp className={className} />;
+        case 'ᐱᐱ': return <ChevronsUp className={className} />;
+        case 'ᐱᐱᐱ': return <ChevronUp className={className} />; // Need to handle multi-icons
+        case '★': return <Star className={className} />;
+        case '★★': return <Star className={className} />;
+        case '★★★': return <Star className={className} />;
+        case '❂': return <Sun className={className} />;
+        case '❂❂': return <Sun className={className} />;
+        case '❂❂❂': return <Sun className={className} />;
+        case '⭐⭐': return <Star className={className} />;
+        case '⭐⭐⭐': return <Star className={className} />;
+        case '⭐⭐⭐⭐': return <Star className={className} />;
+        case '⭐⭐⭐⭐⭐': return <Star className={className} />;
+        case '🎯': return <Target className={className} />;
+        case '👹': return <Skull className={className} />;
+        case '🔥': return <Flame className={className} />;
+        case '⚡': return <Zap className={className} />;
+        default: return <Award className={className} />;
+    }
 };
 
 const getLocalISODate = () => {
@@ -74,12 +100,17 @@ const getSubjectIcon = (subjectName: any, className: string = "", size: number =
 };
 
 const getRankByHours = (hours: number) => {
+    if (hours >= 1000) return 'Marechal';
+    if (hours >= 900) return 'General de Exército';
+    if (hours >= 800) return 'General de Divisão';
+    if (hours >= 700) return 'General de Brigada';
     if (hours >= 600) return 'Coronel';
     if (hours >= 500) return 'Tenente-Coronel';
     if (hours >= 450) return 'Major';
     if (hours >= 400) return 'Capitão';
     if (hours >= 350) return '1º Tenente';
     if (hours >= 300) return '2º Tenente';
+    if (hours >= 280) return 'Aspirante';
     if (hours >= 250) return 'Subtenente';
     if (hours >= 200) return '1º Sargento';
     if (hours >= 150) return '2º Sargento';
@@ -91,7 +122,7 @@ const getRankByHours = (hours: number) => {
 
 const INITIAL_SCHEDULE_DAYS = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
 const MOTIVATIONAL_QUOTES = ["A persistência é o caminho do êxito.", "Se fosse fácil, qualquer um faria.", "A dor passa, a aprovação fica.", "Treino difícil, combate fácil.", "Desistir não é uma opção.", "Cada hora estudada é um passo fardado.", "Disciplina é liberdade.", "O suor de hoje é a glória de amanhã."];
-const ALL_ACHIEVEMENTS_LIST = [{ id: 'h_1', title: 'Recruta', description: '1 Hora de Estudo', icon: '🐣' }, { id: 'h_10', title: 'Soldado', description: '10 Horas de Estudo', icon: '🪖' }, { id: 'h_50', title: 'Cabo', description: '50 Horas de Estudo', icon: '🎗️' }, { id: 'h_100', title: '3º Sargento', description: '100 Horas de Estudo', icon: '🎖️' }, { id: 'h_150', title: '2º Sargento', description: '150 Horas de Estudo', icon: '🎖️' }, { id: 'h_200', title: '1º Sargento', description: '200 Horas de Estudo', icon: '🎖️' }, { id: 'h_250', title: 'Subtenente', description: '250 Horas de Estudo', icon: '🎖️' }, { id: 'h_300', title: '2º Tenente', description: '300 Horas de Estudo', icon: '⭐' }, { id: 'h_350', title: '1º Tenente', description: '350 Horas de Estudo', icon: '⭐' }, { id: 'h_400', title: 'Capitão', description: '400 Horas de Estudo', icon: '⭐⭐' }, { id: 'h_450', title: 'Major', description: '450 Horas de Estudo', icon: '⭐⭐' }, { id: 'h_500', title: 'Tenente-Coronel', description: '500 Horas de Estudo', icon: '⭐⭐⭐' }, { id: 'h_600', title: 'Coronel', description: '600 Horas de Estudo', icon: '👑' }, { id: 'q_100', title: 'Iniciante', description: '100 Questões', icon: '🎯' }, { id: 'q_500', title: 'Praticante', description: '500 Questões', icon: '🎯' }, { id: 'q_1000', title: 'Veterano', description: '1000 Questões', icon: '🎯' }, { id: 'q_1500', title: 'Especialista', description: '1500 Questões', icon: '🎯' }, { id: 'q_2000', title: 'Mestre', description: '2000 Questões', icon: '🎯' }, { id: 'q_3000', title: 'Elite', description: '3000 Questões', icon: '🎯' }, { id: 'q_5000', title: 'Destruidor de Bancas', description: '5000 Questões', icon: '👹' }, { id: 'q_7500', title: 'Lendário', description: '7500 Questões', icon: '🔥' }, { id: 'q_10000', title: 'Deus da Guerra', description: '10000 Questões', icon: '⚡' }];
+const ALL_ACHIEVEMENTS_LIST = [{ id: 'h_1', title: 'Recruta', description: '1 Hora de Estudo', icon: '🐣' }, { id: 'h_10', title: 'Soldado', description: '10 Horas de Estudo', icon: 'ᐱ' }, { id: 'h_50', title: 'Cabo', description: '50 Horas de Estudo', icon: 'ᐱᐱ' }, { id: 'h_100', title: '3º Sargento', description: '100 Horas de Estudo', icon: 'ᐱᐱᐱ' }, { id: 'h_150', title: '2º Sargento', description: '150 Horas de Estudo', icon: 'ᐱᐱᐱᐱ' }, { id: 'h_200', title: '1º Sargento', description: '200 Horas de Estudo', icon: 'ᐱᐱᐱᐱᐱ' }, { id: 'h_250', title: 'Subtenente', description: '250 Horas de Estudo', icon: '⟐' }, { id: 'h_280', title: 'Aspirante', description: '280 Horas de Estudo', icon: '★' }, { id: 'h_300', title: '2º Tenente', description: '300 Horas de Estudo', icon: '★' }, { id: 'h_350', title: '1º Tenente', description: '350 Horas de Estudo', icon: '★★' }, { id: 'h_400', title: 'Capitão', description: '400 Horas de Estudo', icon: '★★★' }, { id: 'h_450', title: 'Major', description: '450 Horas de Estudo', icon: '❂' }, { id: 'h_500', title: 'Tenente-Coronel', description: '500 Horas de Estudo', icon: '❂❂' }, { id: 'h_600', title: 'Coronel', description: '600 Horas de Estudo', icon: '❂❂❂' }, { id: 'h_700', title: 'General de Brigada', description: '700 Horas de Estudo', icon: '⭐⭐' }, { id: 'h_800', title: 'General de Divisão', description: '800 Horas de Estudo', icon: '⭐⭐⭐' }, { id: 'h_900', title: 'General de Exército', description: '900 Horas de Estudo', icon: '⭐⭐⭐⭐' }, { id: 'h_1000', title: 'Marechal', description: '1000 Horas de Estudo', icon: '⭐⭐⭐⭐⭐' }, { id: 'q_100', title: 'Iniciante', description: '100 Questões', icon: '🎯' }, { id: 'q_500', title: 'Praticante', description: '500 Questões', icon: '🎯' }, { id: 'q_1000', title: 'Veterano', description: '1000 Questões', icon: '🎯' }, { id: 'q_1500', title: 'Especialista', description: '1500 Questões', icon: '🎯' }, { id: 'q_2000', title: 'Mestre', description: '2000 Questões', icon: '🎯' }, { id: 'q_3000', title: 'Elite', description: '3000 Questões', icon: '🎯' }, { id: 'q_5000', title: 'Destruidor de Bancas', description: '5000 Questões', icon: '👹' }, { id: 'q_7500', title: 'Lendário', description: '7500 Questões', icon: '🔥' }, { id: 'q_10000', title: 'Deus da Guerra', description: '10000 Questões', icon: '⚡' }];
 
 const ToastContainer = ({ notifications }: { notifications: {id: string, message: string, type: 'success' | 'error' | 'info'}[] }) => {
     return (
@@ -107,7 +138,7 @@ const ToastContainer = ({ notifications }: { notifications: {id: string, message
 };
 
 // ... [Keep RichTextEditor and AuthScreen unchanged] ...
-const RichTextEditor = ({ value, onChange }: { value: string, onChange: (html: string) => void }) => {
+const RichTextEditor = ({ value, onChange, onPrompt }: { value: string, onChange: (html: string) => void, onPrompt?: (msg: string, cb: (val: string) => void) => void }) => {
     const editorRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         if (editorRef.current && editorRef.current.innerHTML !== value) {
@@ -119,7 +150,16 @@ const RichTextEditor = ({ value, onChange }: { value: string, onChange: (html: s
         document.execCommand(command, false, arg);
         if (editorRef.current) onChange(editorRef.current.innerHTML);
     };
-    const addLink = () => { const url = prompt('Insira a URL do link:'); if (url) execCmd('createLink', url); };
+    const addLink = () => { 
+        if (onPrompt) {
+            onPrompt('Insira a URL do link:', (url) => {
+                if (url) execCmd('createLink', url);
+            });
+        } else {
+            const url = prompt('Insira a URL do link:'); 
+            if (url) execCmd('createLink', url); 
+        }
+    };
     return (
         <div className="border border-zinc-700 dark:border-zinc-700 rounded-lg overflow-hidden bg-white dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 shadow-sm">
             <div className="flex items-center gap-2 p-2 bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-700 flex-wrap">
@@ -218,7 +258,7 @@ const AuthScreen = ({ onLogin }: { onLogin: (user: User) => void }) => {
 // ... [ADMIN DASHBOARD] ...
 const AdminDashboard = ({ user, onLogout }: { user: User; onLogout: () => void }) => {
     // Added 'redacao' and 'banco_questoes_admin' tabs
-    const [activeTab, setActiveTab] = useState<'dashboard' | 'message' | 'materials' | 'users' | 'editais' | 'simulados' | 'metrics' | 'ranking' | 'plans' | 'mentoria' | 'redacao' | 'banco_questoes_admin'>('dashboard');
+    const [activeTab, setActiveTab] = useState<'dashboard' | 'message' | 'materials' | 'users' | 'editais' | 'simulados' | 'metrics' | 'ranking' | 'plans' | 'mentoria' | 'redacao' | 'banco_questoes_admin' | 'logins'>('dashboard');
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const [stats, setStats] = useState({ users: 0, materials: 0, editais: 0, simulados: 0, questoes: 0 }); // Added questoes
     const [message, setMessage] = useState('');
@@ -239,6 +279,7 @@ const AdminDashboard = ({ user, onLogout }: { user: User; onLogout: () => void }
     const [newUserPass, setNewUserPass] = useState('');
     const [newUserPlan, setNewUserPlan] = useState('');
     const [newEditalTitle, setNewEditalTitle] = useState('');
+    const [newEditalImageUrl, setNewEditalImageUrl] = useState('');
     const [activeEditalId, setActiveEditalId] = useState<string | null>(null);
     const [editalAllowedPlans, setEditalAllowedPlans] = useState<string[]>([]);
     const [newSubjectName, setNewSubjectName] = useState('');
@@ -246,6 +287,33 @@ const AdminDashboard = ({ user, onLogout }: { user: User; onLogout: () => void }
     const [newTopicName, setNewTopicName] = useState('');
     const [editingSimuladoId, setEditingSimuladoId] = useState<string | null>(null);
     const [newSimTitle, setNewSimTitle] = useState('');
+
+    // --- DIALOG SYSTEM ---
+    const [dialog, setDialog] = useState<{
+        isOpen: boolean;
+        type: DialogType;
+        title: string;
+        message: string;
+        onConfirm?: (value?: string) => void;
+        inputPlaceholder?: string;
+    }>({ isOpen: false, type: 'alert', title: '', message: '' });
+
+    const showAlert = (title: string, message: string) => {
+        setDialog({ isOpen: true, type: 'alert', title, message, onConfirm: undefined });
+    };
+
+    const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+        setDialog({ isOpen: true, type: 'confirm', title, message, onConfirm });
+    };
+
+    const showPrompt = (title: string, message: string, onConfirm: (value: string) => void, placeholder?: string) => {
+        setDialog({ isOpen: true, type: 'prompt', title, message, onConfirm: (v) => onConfirm(v || ''), inputPlaceholder: placeholder });
+    };
+
+    const handleDialogConfirm = (value?: string) => {
+        if (dialog.onConfirm) dialog.onConfirm(value);
+        setDialog({ ...dialog, isOpen: false });
+    };
     const [newSimPdf, setNewSimPdf] = useState('');
     const [newSimCover, setNewSimCover] = useState('');
     const [newSimKeysObj, setNewSimKeysObj] = useState<Record<number, string>>({});
@@ -267,6 +335,7 @@ const AdminDashboard = ({ user, onLogout }: { user: User; onLogout: () => void }
     const [matAllowedPlans, setMatAllowedPlans] = useState<string[]>([]);
     const [newPlanName, setNewPlanName] = useState('');
     const [newPlanDesc, setNewPlanDesc] = useState('');
+    const [pendingUserPlans, setPendingUserPlans] = useState<Record<string, string>>({});
 
     // State for ONLINE Question Creation
     const [onlineQStatement, setOnlineQStatement] = useState('');
@@ -307,23 +376,23 @@ const AdminDashboard = ({ user, onLogout }: { user: User; onLogout: () => void }
     useEffect(() => { if (activeTab === 'ranking') loadRankings(); }, [activeTab, users]);
     const getFilteredSeconds = (sessions: StudySession[]) => { const now = new Date(); const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()); const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay()); const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1); const startOfYear = new Date(now.getFullYear(), 0, 1); return sessions.reduce((acc, s) => { const sDate = new Date(s.date); if (rankingPeriod === 'DAILY' && sDate >= startOfDay) return acc + s.durationSeconds; if (rankingPeriod === 'WEEKLY' && sDate >= startOfWeek) return acc + s.durationSeconds; if (rankingPeriod === 'MONTHLY' && sDate >= startOfMonth) return acc + s.durationSeconds; if (rankingPeriod === 'ANNUAL' && sDate >= startOfYear) return acc + s.durationSeconds; return acc; }, 0); };
     const sortedByHours = [...rankingData].sort((a,b) => getFilteredSeconds(b.sessions) - getFilteredSeconds(a.sessions)).slice(0, 10);
-    const handleApproveUser = async (id: string, planId?: string) => { const target = users.find(u => u.id === id); if (target) { const updated = { ...target, approved: true, planId: planId || target.planId }; await globalRepo.saveUser(updated); setUsers(users.map(u => u.id === id ? updated : u)); } };
-    const handleRejectUser = async (id: string) => { if (!window.confirm('Rejeitar/Excluir usuário?')) return; await globalRepo.deleteUser(id); setUsers(users.filter(u => u.id !== id)); };
-    const handleCreateUser = async () => { if (!newUserName || !newUserEmail || !newUserPass) return; const newUser: User = { id: Date.now().toString(), name: newUserName, email: newUserEmail, password: newUserPass, role: UserRole.STUDENT, approved: true, planId: newUserPlan, achievements: [{ id: '1', title: 'Recruta', description: 'Criou a conta', icon: '🐣', unlocked: true }] }; await globalRepo.saveUser(newUser); setUsers([...users, newUser]); setNewUserName(''); setNewUserEmail(''); setNewUserPass(''); setNewUserPlan(''); alert('Aluno cadastrado!'); };
+    const handleApproveUser = async (id: string, planId?: string) => { const target = users.find(u => u.id === id); if (target) { const updated = { ...target, approved: true, planId: planId || target.planId }; await globalRepo.saveUser(updated); setUsers(users.map(u => u.id === id ? updated : u)); showAlert('Sucesso', 'Aluno aprovado!'); } };
+    const handleRejectUser = (id: string) => { showConfirm('Confirmação', 'Rejeitar/Excluir usuário?', async () => { await globalRepo.deleteUser(id); setUsers(users.filter(u => u.id !== id)); }); };
+    const handleCreateUser = async () => { if (!newUserName || !newUserEmail || !newUserPass) return showAlert('Erro', 'Preencha todos os campos!'); const newUser: User = { id: Date.now().toString(), name: newUserName, email: newUserEmail, password: newUserPass, role: UserRole.STUDENT, approved: true, planId: newUserPlan, achievements: [{ id: '1', title: 'Recruta', description: 'Criou a conta', icon: '🐣', unlocked: true }] }; await globalRepo.saveUser(newUser); setUsers([...users, newUser]); setNewUserName(''); setNewUserEmail(''); setNewUserPass(''); setNewUserPlan(''); showAlert('Sucesso', 'Aluno cadastrado!'); };
     const handleAddPlan = async () => { if (!newPlanName) return; const newPlan: Plan = { id: Date.now().toString(), name: newPlanName, description: newPlanDesc }; const updatedPlans = [...plans, newPlan]; await globalRepo.savePlans(updatedPlans); setPlans(updatedPlans); setNewPlanName(''); setNewPlanDesc(''); };
-    const handleDeletePlan = async (id: string) => { if(!window.confirm('Excluir plano?')) return; const updatedPlans = plans.filter(p => p.id !== id); await globalRepo.savePlans(updatedPlans); setPlans(updatedPlans); };
-    const handleAddEdital = async () => { if (!newEditalTitle) return; const newEdital: Edital = { id: Date.now().toString(), title: newEditalTitle, subjects: [], allowedPlanIds: editalAllowedPlans }; await globalRepo.saveEdital(newEdital); setEditais([...editais, newEdital]); setNewEditalTitle(''); setEditalAllowedPlans([]); };
-    const handleDeleteEdital = async (id: string) => { if (!window.confirm('Excluir?')) return; await globalRepo.deleteEdital(id); setEditais(editais.filter(e => e.id !== id)); };
+    const handleDeletePlan = (id: string) => { showConfirm('Confirmação', 'Excluir plano?', async () => { const updatedPlans = plans.filter(p => p.id !== id); await globalRepo.savePlans(updatedPlans); setPlans(updatedPlans); }); };
+    const handleAddEdital = async () => { if (!newEditalTitle) return; const newEdital: Edital = { id: Date.now().toString(), title: newEditalTitle, imageUrl: newEditalImageUrl, subjects: [], allowedPlanIds: editalAllowedPlans }; await globalRepo.saveEdital(newEdital); setEditais([...editais, newEdital]); setNewEditalTitle(''); setNewEditalImageUrl(''); setEditalAllowedPlans([]); };
+    const handleDeleteEdital = (id: string) => { showConfirm('Confirmação', 'Excluir edital?', async () => { await globalRepo.deleteEdital(id); setEditais(editais.filter(e => e.id !== id)); }); };
     const updateEdital = async (edital: Edital) => { await globalRepo.saveEdital(edital); setEditais(editais.map(e => e.id === edital.id ? edital : e)); };
     const handleAddSubject = () => { if (!activeEditalId || !newSubjectName) return; const edital = editais.find(e => e.id === activeEditalId); if (edital) { updateEdital({ ...edital, subjects: [...edital.subjects, { id: Date.now().toString(), name: newSubjectName, topics: [] }] }); setNewSubjectName(''); } };
-    const handleDeleteSubject = async (subjectId: string) => { if (!activeEditalId || !window.confirm('Tem certeza que deseja remover esta matéria e todos os seus tópicos?')) return; const edital = editais.find(e => e.id === activeEditalId); if (edital) { const updatedSubjects = edital.subjects.filter(s => s.id !== subjectId); updateEdital({ ...edital, subjects: updatedSubjects }); if (selectedSubjectId === subjectId) setSelectedSubjectId(null); } };
+    const handleDeleteSubject = (subjectId: string) => { if (!activeEditalId) return; showConfirm('Confirmação', 'Tem certeza que deseja remover esta matéria e todos os seus tópicos?', () => { const edital = editais.find(e => e.id === activeEditalId); if (edital) { const updatedSubjects = edital.subjects.filter(s => s.id !== subjectId); updateEdital({ ...edital, subjects: updatedSubjects }); if (selectedSubjectId === subjectId) setSelectedSubjectId(null); } }); };
     const handleAddTopic = () => { if (!activeEditalId || !selectedSubjectId || !newTopicName) return; const edital = editais.find(e => e.id === activeEditalId); if (edital) { const newSubjects = edital.subjects.map(s => s.id === selectedSubjectId ? { ...s, topics: [...s.topics, { id: Date.now().toString(), name: newTopicName }] } : s); updateEdital({ ...edital, subjects: newSubjects }); setNewTopicName(''); } };
-    const handleDeleteTopic = async (subjectId: string, topicId: string) => { if (!activeEditalId || !window.confirm('Remover tópico?')) return; const edital = editais.find(e => e.id === activeEditalId); if (edital) { const newSubjects = edital.subjects.map(s => { if (s.id === subjectId) { return { ...s, topics: s.topics.filter(t => t.id !== topicId) }; } return s; }); updateEdital({ ...edital, subjects: newSubjects }); } };
+    const handleDeleteTopic = (subjectId: string, topicId: string) => { if (!activeEditalId) return; showConfirm('Confirmação', 'Remover tópico?', () => { const edital = editais.find(e => e.id === activeEditalId); if (edital) { const newSubjects = edital.subjects.map(s => { if (s.id === subjectId) { return { ...s, topics: s.topics.filter(t => t.id !== topicId) }; } return s; }); updateEdital({ ...edital, subjects: newSubjects }); } }); };
     const getOptions = (type: 'ABCD' | 'ABCDE' | 'CERTO_ERRADO') => { if (type === 'ABCD') return ['A', 'B', 'C', 'D']; if (type === 'CERTO_ERRADO') return ['C', 'E']; return ['A', 'B', 'C', 'D', 'E']; };
     const handleEditSimulado = (sim: Simulado) => { setEditingSimuladoId(sim.id); setNewSimTitle(sim.title); setNewSimPdf(sim.pdfUrl || ''); setNewSimCover(sim.coverImage || ''); setNewSimType(sim.type); setNewSimCount(sim.questionCount); setNewSimInstr(sim.instructions); setSimAllowedPlans(sim.allowedPlanIds || []); setNewSimMode(sim.mode || 'PDF'); setSimOnlineQuestions(sim.questions || []); const keysObj: Record<number, string> = {}; if (sim.answerKey) sim.answerKey.split(',').forEach(part => { const match = part.match(/(\d+)([A-Z])/); if (match) keysObj[parseInt(match[1])] = match[2]; }); setNewSimKeysObj(keysObj); window.scrollTo({ top: 0, behavior: 'smooth' }); };
     const handleCancelEdit = () => { setEditingSimuladoId(null); setNewSimTitle(''); setNewSimPdf(''); setNewSimCover(''); setNewSimKeysObj({}); setNewSimCount(0); setNewSimInstr(''); setNewSimType('ABCDE'); setSimAllowedPlans([]); setNewSimMode('PDF'); setSimOnlineQuestions([]); };
     const handleAddOnlineQuestion = () => {
-        if (!onlineQStatement || !onlineQCorrect) return alert("Preencha enunciado e gabarito.");
+        if (!onlineQStatement || !onlineQCorrect) return showAlert('Erro', "Preencha enunciado e gabarito.");
         const newQ: SimuladoQuestion = {
             id: Date.now().toString(),
             text: onlineQStatement,
@@ -352,7 +421,7 @@ const AdminDashboard = ({ user, onLogout }: { user: User; onLogout: () => void }
             finalCount = simOnlineQuestions.length;
             generatedKeys = simOnlineQuestions.map((q, i) => `${i+1}${q.correctAnswer}`).join(',');
         } else {
-            if(!newSimCount) return alert("Defina a quantidade de questões.");
+            if(!newSimCount) return showAlert('Erro', "Defina a quantidade de questões.");
             generatedKeys = Object.entries(newSimKeysObj).map(([q, ans]) => `${q}${ans}`).join(',');
         }
 
@@ -361,16 +430,16 @@ const AdminDashboard = ({ user, onLogout }: { user: User; onLogout: () => void }
         if (editingSimuladoId) setSimulados(simulados.map(s => s.id === newSim.id ? newSim : s)); 
         else setSimulados([...simulados, newSim]); 
         handleCancelEdit(); 
-        alert(editingSimuladoId ? 'Atualizado!' : 'Criado!'); 
+        showAlert('Sucesso', editingSimuladoId ? 'Atualizado!' : 'Criado!'); 
     };
-    const handleDeleteSimulado = async (e: React.MouseEvent, id: string) => { e.preventDefault(); e.stopPropagation(); if(!window.confirm('Excluir?')) return; await globalRepo.deleteSimulado(id); setSimulados(simulados.filter(s => s.id !== id)); };
-    const handleSaveMessage = async () => { await globalRepo.saveCommandMessage(message); alert('Mensagem salva!'); };
-    const handleSaveVideo = async () => { await globalRepo.saveTutorialVideo(tutorialUrl); alert('Vídeo de tutorial salvo!'); };
+    const handleDeleteSimulado = (e: React.MouseEvent, id: string) => { e.preventDefault(); e.stopPropagation(); showConfirm('Confirmação', 'Excluir?', async () => { await globalRepo.deleteSimulado(id); setSimulados(simulados.filter(s => s.id !== id)); }); };
+    const handleSaveMessage = async () => { await globalRepo.saveCommandMessage(message); showAlert('Sucesso', 'Mensagem salva!'); };
+    const handleSaveVideo = async () => { await globalRepo.saveTutorialVideo(tutorialUrl); showAlert('Sucesso', 'Vídeo de tutorial salvo!'); };
     const handleEditMaterial = (mat: Material) => { setEditingMaterialId(mat.id); setNewMatTitle(mat.title); setNewMatSubject(mat.subject); setNewMatTopic(mat.topic || ''); setNewMatCategory(mat.category); setNewMatContent(mat.contentHtml); setNewMatPdf(mat.pdfUrl || ''); setNewMatVideo(mat.videoUrl || ''); setNewMatQuestions(mat.questionsUrl || ''); setMatAllowedPlans(mat.allowedPlanIds || []); window.scrollTo({ top: 0, behavior: 'smooth' }); };
     const handleCancelMaterialEdit = () => { setEditingMaterialId(null); setNewMatTitle(''); setNewMatSubject(''); setNewMatTopic(''); setNewMatContent(''); setNewMatPdf(''); setNewMatVideo(''); setNewMatQuestions(''); setNewMatCategory('GUIDED'); setMatAllowedPlans([]); };
     const handleMoveMaterial = async (mat: Material, direction: 'up' | 'down') => { const subjectMaterials = materials.filter(m => m.subject === mat.subject).sort((a, b) => (a.order || 0) - (b.order || 0)); const currentIndex = subjectMaterials.findIndex(m => m.id === mat.id); if (currentIndex === -1) return; let targetIndex = -1; if (direction === 'up' && currentIndex > 0) targetIndex = currentIndex - 1; if (direction === 'down' && currentIndex < subjectMaterials.length - 1) targetIndex = currentIndex + 1; if (targetIndex !== -1) { const updatedBatch = [...subjectMaterials]; updatedBatch.forEach((m, idx) => m.order = idx); const temp = updatedBatch[currentIndex]; updatedBatch[currentIndex] = updatedBatch[targetIndex]; updatedBatch[targetIndex] = temp; updatedBatch.forEach((m, idx) => m.order = idx); await globalRepo.saveMaterials(updatedBatch); const otherMaterials = materials.filter(m => m.subject !== mat.subject); setMaterials([...otherMaterials, ...updatedBatch]); } };
-    const handleSaveMaterial = async () => { if (!newMatTitle || !newMatSubject) { alert('Preencha Título e Matéria.'); return; } const subjectMaterials = materials.filter(m => m.subject === newMatSubject); const maxOrder = subjectMaterials.reduce((max, m) => Math.max(max, m.order || 0), -1); const materialToSave: Material = { id: editingMaterialId || Date.now().toString(), title: newMatTitle, subject: newMatSubject, topic: newMatTopic, category: newMatCategory, contentHtml: newMatContent, pdfUrl: newMatPdf, videoUrl: newMatVideo, questionsUrl: newMatQuestions, dateAdded: editingMaterialId ? (materials.find(m => m.id === editingMaterialId)?.dateAdded || new Date().toISOString()) : new Date().toISOString(), order: editingMaterialId ? (materials.find(m => m.id === editingMaterialId)?.order || 0) : maxOrder + 1, allowedPlanIds: matAllowedPlans }; await globalRepo.saveMaterials([materialToSave]); if (editingMaterialId) { setMaterials(materials.map(m => m.id === editingMaterialId ? materialToSave : m)); alert('Material atualizado!'); } else { setMaterials([...materials, materialToSave]); alert('Material adicionado!'); } handleCancelMaterialEdit(); };
-    const handleDeleteMaterial = async (e: React.MouseEvent, id: string) => { e.preventDefault(); e.stopPropagation(); if(window.confirm('Excluir?')) { await globalRepo.deleteMaterial(id); setMaterials(materials.filter(m => m.id !== id)); } };
+    const handleSaveMaterial = async () => { if (!newMatTitle || !newMatSubject) { showAlert('Erro', 'Preencha Título e Matéria.'); return; } const subjectMaterials = materials.filter(m => m.subject === newMatSubject); const maxOrder = subjectMaterials.reduce((max, m) => Math.max(max, m.order || 0), -1); const materialToSave: Material = { id: editingMaterialId || Date.now().toString(), title: newMatTitle, subject: newMatSubject, topic: newMatTopic, category: newMatCategory, contentHtml: newMatContent, pdfUrl: newMatPdf, videoUrl: newMatVideo, questionsUrl: newMatQuestions, dateAdded: editingMaterialId ? (materials.find(m => m.id === editingMaterialId)?.dateAdded || new Date().toISOString()) : new Date().toISOString(), order: editingMaterialId ? (materials.find(m => m.id === editingMaterialId)?.order || 0) : maxOrder + 1, allowedPlanIds: matAllowedPlans }; await globalRepo.saveMaterials([materialToSave]); if (editingMaterialId) { setMaterials(materials.map(m => m.id === editingMaterialId ? materialToSave : m)); showAlert('Sucesso', 'Material atualizado!'); } else { setMaterials([...materials, materialToSave]); showAlert('Sucesso', 'Material adicionado!'); } handleCancelMaterialEdit(); };
+    const handleDeleteMaterial = (e: React.MouseEvent, id: string) => { e.preventDefault(); e.stopPropagation(); showConfirm('Confirmação', 'Excluir?', async () => { await globalRepo.deleteMaterial(id); setMaterials(materials.filter(m => m.id !== id)); }); };
     const toggleSubjectExpand = (subject: string) => { if (expandedSubjects.includes(subject)) { setExpandedSubjects(expandedSubjects.filter(s => s !== subject)); } else { setExpandedSubjects([...expandedSubjects, subject]); } };
     const handleSubjectVisibilityChange = async (subject: string, planId: string, isChecked: boolean) => { const targetMaterials = materials.filter(m => m.subject === subject); const updatedBatch = targetMaterials.map(m => { const currentPlans = m.allowedPlanIds || []; let newPlans: string[] = []; if (isChecked) { newPlans = currentPlans.includes(planId) ? currentPlans : [...currentPlans, planId]; } else { newPlans = currentPlans.filter(id => id !== planId); } return { ...m, allowedPlanIds: newPlans }; }); const otherMaterials = materials.filter(m => m.subject !== subject); setMaterials([...otherMaterials, ...updatedBatch]); await globalRepo.saveMaterials(updatedBatch); };
     const materialsBySubject = materials.reduce((acc, mat) => { if (!acc[mat.subject]) acc[mat.subject] = []; acc[mat.subject].push(mat); return acc; }, {} as Record<string, Material[]>);
@@ -425,6 +494,7 @@ const AdminDashboard = ({ user, onLogout }: { user: User; onLogout: () => void }
                         {id: 'mentoria', label: 'Mentoria', icon: <Map size={18}/>},
                         {id: 'banco_questoes_admin', label: 'Gestão Questões', icon: <Database size={18}/>},
                         {id: 'redacao', label: 'Redação', icon: <PenTool size={18}/>},
+                        {id: 'logins', label: 'Controle de Logins', icon: <History size={18}/>},
                         {id: 'message', label: 'Comunicação', icon: <MessageCircle size={18}/>},
                         {id: 'editais', label: 'Gestão Editais', icon: <List size={18}/>},
                         {id: 'simulados', label: 'Gestão Simulados', icon: <FileText size={18}/>},
@@ -517,6 +587,7 @@ const AdminDashboard = ({ user, onLogout }: { user: User; onLogout: () => void }
                     </div>
                 )}
                 {activeTab === 'mentoria' && <AdminMentorshipPanel users={users} plans={plans} />}
+                {activeTab === 'logins' && <AdminLoginsPanel />}
                 
                 {/* RENDER NEW ADMIN TABS */}
                 {activeTab === 'redacao' && <EssayPanel user={user} />}
@@ -549,8 +620,87 @@ const AdminDashboard = ({ user, onLogout }: { user: User; onLogout: () => void }
                     </div>
                 )}
                 {/* ... existing code for other tabs (message, editais, simulados, materials, users) remains here ... */}
-                {activeTab === 'message' && <div className="space-y-6 max-w-2xl"><div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800"><h3 className="text-xl font-bold dark:text-white mb-4">Aviso Geral</h3><RichTextEditor value={message} onChange={setMessage} /><button onClick={handleSaveMessage} className="mt-4 bg-red-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-red-700">Salvar Aviso</button></div><div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800"><h3 className="text-xl font-bold dark:text-white mb-4">Tutorial da Plataforma</h3><div className="flex gap-2"><input type="text" placeholder="Cole o link do YouTube aqui (ex: https://youtu.be/...)" value={tutorialUrl} onChange={e => setTutorialUrl(e.target.value)} className="flex-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-3 rounded-lg text-zinc-800 dark:text-white" /><button onClick={handleSaveVideo} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700">Salvar Vídeo</button></div><p className="text-xs text-zinc-500 mt-2">Dica: Envie um vídeo "Não Listado" no YouTube e cole o link aqui.</p></div></div>}
-                {activeTab === 'editais' && <div className="space-y-8"><div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800"><h3 className="text-xl font-bold dark:text-white mb-4">Criar Novo Edital</h3><div className="flex gap-4"><input value={newEditalTitle} onChange={e => setNewEditalTitle(e.target.value)} placeholder="Nome" className="flex-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2 rounded dark:text-white" /><button onClick={handleAddEdital} className="bg-green-600 text-white px-6 rounded hover:bg-green-700">Criar</button></div><div className="mt-3 flex gap-2 flex-wrap text-sm text-zinc-400 items-center"><span>Visibilidade:</span>{plans.map(p => (<label key={p.id} className="flex items-center gap-1 cursor-pointer bg-zinc-800 px-2 py-1 rounded border border-zinc-700"><input type="checkbox" checked={editalAllowedPlans.includes(p.id)} onChange={() => toggleAllowedPlan(p.id, editalAllowedPlans, setEditalAllowedPlans)} /> {p.name}</label>))}</div></div><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800"><h3 className="text-xl font-bold dark:text-white mb-4">Editais</h3><div className="space-y-2">{editais.map(e => (<div key={e.id} onClick={() => setActiveEditalId(e.id)} className={`p-3 border rounded cursor-pointer flex justify-between items-center ${activeEditalId === e.id ? 'border-red-600 bg-red-50 dark:bg-red-900/20' : 'border-zinc-700'}`}><span className="dark:text-white font-bold">{e.title}</span><button onClick={(ev) => { ev.stopPropagation(); handleDeleteEdital(e.id); }} className="text-red-500"><Trash2 size={16}/></button></div>))}</div></div>{activeEditalId && <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800"><h3 className="text-xl font-bold dark:text-white mb-4">Conteúdo</h3><div className="flex gap-2 mb-4"><input value={newSubjectName} onChange={e => setNewSubjectName(e.target.value)} placeholder="Matéria" className="flex-1 bg-zinc-800 border border-zinc-700 p-2 rounded text-white text-sm" /><button onClick={handleAddSubject} className="bg-blue-600 text-white px-3 rounded text-sm">Add</button></div><div className="space-y-4 max-h-[400px] overflow-y-auto">{editais.find(e => e.id === activeEditalId)?.subjects.map(s => (<div key={s.id} className="border border-zinc-700 p-3 rounded bg-zinc-800/50"><div className="flex justify-between items-center mb-2"><span className="font-bold text-white text-sm">{s.name}</span><div className="flex gap-2"><button onClick={() => setSelectedSubjectId(s.id)} className={`text-xs px-2 py-1 rounded ${selectedSubjectId === s.id ? 'bg-green-600 text-white' : 'bg-zinc-700 text-zinc-300'}`}>Select</button><button onClick={() => handleDeleteSubject(s.id)} className="text-red-500 hover:text-red-400 p-1"><Trash2 size={16}/></button></div></div><ul className="pl-4 list-disc text-xs text-zinc-400 space-y-1">{s.topics.map(t => <li key={t.id} className="flex justify-between items-center group"><span>{t.name}</span><button onClick={() => handleDeleteTopic(s.id, t.id)} className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-500 transition"><XCircle size={14}/></button></li>)}</ul>{selectedSubjectId === s.id && <div className="flex gap-2 mt-2"><input value={newTopicName} onChange={e => setNewTopicName(e.target.value)} placeholder="Novo Tópico" className="flex-1 bg-zinc-900 border border-zinc-700 p-1 rounded text-white text-xs" /><button onClick={handleAddTopic} className="bg-green-600 text-white px-2 rounded text-xs">+</button></div>}</div>))}</div></div>}</div></div>}
+                {activeTab === 'message' && <div className="space-y-6 max-w-2xl"><div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800"><h3 className="text-xl font-bold dark:text-white mb-4">Aviso Geral</h3><RichTextEditor value={message} onChange={setMessage} onPrompt={(msg, cb) => showPrompt('Link', msg, cb)} /><button onClick={handleSaveMessage} className="mt-4 bg-red-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-red-700">Salvar Aviso</button></div><div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800"><h3 className="text-xl font-bold dark:text-white mb-4">Tutorial da Plataforma</h3><div className="flex gap-2"><input type="text" placeholder="Cole o link do YouTube aqui (ex: https://youtu.be/...)" value={tutorialUrl} onChange={e => setTutorialUrl(e.target.value)} className="flex-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-3 rounded-lg text-zinc-800 dark:text-white" /><button onClick={handleSaveVideo} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700">Salvar Vídeo</button></div><p className="text-xs text-zinc-500 mt-2">Dica: Envie um vídeo "Não Listado" no YouTube e cole o link aqui.</p></div></div>}
+                {activeTab === 'editais' && (
+    <div className="space-y-8">
+        <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800">
+            <h3 className="text-xl font-bold dark:text-white mb-4">Criar Novo Edital</h3>
+            <div className="flex flex-col gap-4">
+                <div className="flex gap-4">
+                    <input value={newEditalTitle} onChange={e => setNewEditalTitle(e.target.value)} placeholder="Nome" className="flex-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2 rounded dark:text-white" />
+                    <input value={newEditalImageUrl} onChange={e => setNewEditalImageUrl(e.target.value)} placeholder="URL da Imagem/Brasão (Opcional)" className="flex-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2 rounded dark:text-white" />
+                    <button onClick={handleAddEdital} className="bg-green-600 text-white px-6 rounded hover:bg-green-700">Criar</button>
+                </div>
+            </div>
+            <div className="mt-3 flex gap-2 flex-wrap text-sm text-zinc-400 items-center">
+                <span>Visibilidade:</span>
+                {plans.map(p => (
+                    <label key={p.id} className="flex items-center gap-1 cursor-pointer bg-zinc-800 px-2 py-1 rounded border border-zinc-700">
+                        <input type="checkbox" checked={editalAllowedPlans.includes(p.id)} onChange={() => toggleAllowedPlan(p.id, editalAllowedPlans, setEditalAllowedPlans)} /> {p.name}
+                    </label>
+                ))}
+            </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                <h3 className="text-xl font-bold dark:text-white mb-4">Editais</h3>
+                <div className="space-y-2">
+                    {editais.map(e => (
+                        <div key={e.id} onClick={() => setActiveEditalId(e.id)} className={`p-3 border rounded cursor-pointer flex justify-between items-center ${activeEditalId === e.id ? 'border-red-600 bg-red-50 dark:bg-red-900/20' : 'border-zinc-700'}`}>
+                            <div className="flex items-center gap-3">
+                                {e.imageUrl && <img src={e.imageUrl} alt="Brasão" className="w-8 h-8 object-contain rounded" />}
+                                <span className="dark:text-white font-bold">{e.title}</span>
+                            </div>
+                            <button onClick={(ev) => { ev.stopPropagation(); handleDeleteEdital(e.id); }} className="text-red-500"><Trash2 size={16}/></button>
+                        </div>
+                    ))}
+                </div>
+            </div>
+            {activeEditalId && (
+                <div className="bg-white dark:bg-zinc-900 p-6 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                    <h3 className="text-xl font-bold dark:text-white mb-4">Conteúdo</h3>
+                    <div className="mb-4">
+                        <label className="text-xs text-zinc-500 font-bold uppercase">URL da Capa</label>
+                        <div className="flex gap-2 mt-1">
+                            <input value={editais.find(e => e.id === activeEditalId)?.imageUrl || ''} onChange={e => { const ed = editais.find(e => e.id === activeEditalId); if(ed) updateEdital({...ed, imageUrl: e.target.value}); }} placeholder="URL da Capa" className="flex-1 bg-zinc-800 border border-zinc-700 p-2 rounded text-white text-sm" />
+                        </div>
+                    </div>
+                    <div className="flex gap-2 mb-4">
+                        <input value={newSubjectName} onChange={e => setNewSubjectName(e.target.value)} placeholder="Matéria" className="flex-1 bg-zinc-800 border border-zinc-700 p-2 rounded text-white text-sm" />
+                        <button onClick={handleAddSubject} className="bg-blue-600 text-white px-3 rounded text-sm">Add</button>
+                    </div>
+                    <div className="space-y-4 max-h-[400px] overflow-y-auto">
+                        {editais.find(e => e.id === activeEditalId)?.subjects.map(s => (
+                            <div key={s.id} className="border border-zinc-700 p-3 rounded bg-zinc-800/50">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="font-bold text-white text-sm">{s.name}</span>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setSelectedSubjectId(s.id)} className={`text-xs px-2 py-1 rounded ${selectedSubjectId === s.id ? 'bg-green-600 text-white' : 'bg-zinc-700 text-zinc-300'}`}>Select</button>
+                                        <button onClick={() => handleDeleteSubject(s.id)} className="text-red-500 hover:text-red-400 p-1"><Trash2 size={16}/></button>
+                                    </div>
+                                </div>
+                                <ul className="pl-4 list-disc text-xs text-zinc-400 space-y-1">
+                                    {s.topics.map(t => (
+                                        <li key={t.id} className="flex justify-between items-center group">
+                                            <span>{t.name}</span>
+                                            <button onClick={() => handleDeleteTopic(s.id, t.id)} className="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-red-500 transition"><XCircle size={14}/></button>
+                                        </li>
+                                    ))}
+                                </ul>
+                                {selectedSubjectId === s.id && (
+                                    <div className="flex gap-2 mt-2">
+                                        <input value={newTopicName} onChange={e => setNewTopicName(e.target.value)} placeholder="Novo Tópico" className="flex-1 bg-zinc-900 border border-zinc-700 p-1 rounded text-white text-xs" />
+                                        <button onClick={handleAddTopic} className="bg-green-600 text-white px-2 rounded text-xs">+</button>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    </div>
+)}
                 
                 {/* SIMULADO ADMIN AREA UPDATED */}
                 {activeTab === 'simulados' && (
@@ -682,22 +832,36 @@ const AdminDashboard = ({ user, onLogout }: { user: User; onLogout: () => void }
 
                             <div className="mb-4">
                                 <label className="text-xs font-bold text-zinc-500 uppercase mb-2 block">Conteúdo (Texto Rico)</label>
-                                <RichTextEditor value={newMatContent} onChange={setNewMatContent} />
+                                <RichTextEditor value={newMatContent} onChange={setNewMatContent} onPrompt={(msg, cb) => showPrompt('Link', msg, cb)} />
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                                <div>
-                                    <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1"><FileText size={12}/> Link PDF</label>
-                                    <input value={newMatPdf} onChange={e => setNewMatPdf(e.target.value)} placeholder="https://..." className="w-full mt-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2.5 rounded-lg text-zinc-800 dark:text-white outline-none focus:border-red-600" />
-                                </div>
-                                <div>
-                                    <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1"><Video size={12}/> Link Vídeo</label>
-                                    <input value={newMatVideo} onChange={e => setNewMatVideo(e.target.value)} placeholder="https://..." className="w-full mt-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2.5 rounded-lg text-zinc-800 dark:text-white outline-none focus:border-red-600" />
-                                </div>
-                                <div>
-                                    <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1"><ListIcon size={12}/> Link Questões</label>
-                                    <input value={newMatQuestions} onChange={e => setNewMatQuestions(e.target.value)} placeholder="https://..." className="w-full mt-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2.5 rounded-lg text-zinc-800 dark:text-white outline-none focus:border-red-600" />
-                                </div>
+                                {newMatCategory === 'LEI_SECA' ? (
+                                    <div className="col-span-3">
+                                        <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1"><LinkIcon size={12}/> Link da Lei (Site/Planalto)</label>
+                                        <input value={newMatPdf} onChange={e => setNewMatPdf(e.target.value)} placeholder="https://www.planalto.gov.br/..." className="w-full mt-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2.5 rounded-lg text-zinc-800 dark:text-white outline-none focus:border-red-600" />
+                                        {newMatPdf && (
+                                            <div className="mt-4 border border-zinc-700 rounded-lg overflow-hidden h-[400px]">
+                                                <iframe src={newMatPdf} className="w-full h-full bg-white" title="Preview Lei" />
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1"><FileText size={12}/> Link PDF</label>
+                                            <input value={newMatPdf} onChange={e => setNewMatPdf(e.target.value)} placeholder="https://..." className="w-full mt-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2.5 rounded-lg text-zinc-800 dark:text-white outline-none focus:border-red-600" />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1"><Video size={12}/> Link Vídeo</label>
+                                            <input value={newMatVideo} onChange={e => setNewMatVideo(e.target.value)} placeholder="https://..." className="w-full mt-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2.5 rounded-lg text-zinc-800 dark:text-white outline-none focus:border-red-600" />
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-1"><ListIcon size={12}/> Link Questões</label>
+                                            <input value={newMatQuestions} onChange={e => setNewMatQuestions(e.target.value)} placeholder="https://..." className="w-full mt-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 p-2.5 rounded-lg text-zinc-800 dark:text-white outline-none focus:border-red-600" />
+                                        </div>
+                                    </>
+                                )}
                             </div>
 
                             <div className="mb-6">
@@ -826,9 +990,19 @@ const AdminDashboard = ({ user, onLogout }: { user: User; onLogout: () => void }
                                                 <p className="text-zinc-400 text-sm">{u.email}</p>
                                                 <p className="text-xs text-red-400 mt-1">Aguardando aprovação</p>
                                             </div>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => handleApproveUser(u.id)} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold transition shadow-lg">Aprovar</button>
-                                                <button onClick={() => handleRejectUser(u.id)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-bold transition shadow-lg">Rejeitar</button>
+                                            <div className="flex flex-col md:flex-row gap-2 items-center">
+                                                {/* PLAN SELECTOR */}
+                                                <select
+                                                    value={pendingUserPlans[u.id] || ""}
+                                                    onChange={(e) => setPendingUserPlans({...pendingUserPlans, [u.id]: e.target.value})}
+                                                    className="bg-zinc-800 border border-zinc-700 text-white text-sm rounded p-2 outline-none focus:border-green-600"
+                                                >
+                                                    <option value="">Sem Plano (Global)</option>
+                                                    {plans.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                                </select>
+
+                                                <button onClick={() => handleApproveUser(u.id, pendingUserPlans[u.id])} className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-bold transition shadow-lg whitespace-nowrap">Aprovar</button>
+                                                <button onClick={() => handleRejectUser(u.id)} className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-bold transition shadow-lg whitespace-nowrap">Rejeitar</button>
                                             </div>
                                         </div>
                                     ))}
@@ -899,6 +1073,15 @@ const AdminDashboard = ({ user, onLogout }: { user: User; onLogout: () => void }
                     </div>
                 )}
             </main>
+            <Dialog 
+                isOpen={dialog.isOpen} 
+                type={dialog.type} 
+                title={dialog.title} 
+                message={dialog.message} 
+                onConfirm={handleDialogConfirm} 
+                onCancel={() => setDialog({ ...dialog, isOpen: false })} 
+                inputPlaceholder={dialog.inputPlaceholder}
+            />
         </div>
     );
 };
@@ -923,6 +1106,16 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
     const [timerSubject, setTimerSubject] = useState<string>(localStorage.getItem('sm_timer_subject') || '');
     const [timerSeconds, setTimerSeconds] = useState(Number(localStorage.getItem('sm_timer_seconds') || 0));
     const [isTimerRunning, setIsTimerRunning] = useState(localStorage.getItem('sm_timer_running') === 'true');
+    const [timerStartTime, setTimerStartTime] = useState<number | null>(Number(localStorage.getItem('sm_timer_start_time')) || null);
+    const [displaySeconds, setDisplaySeconds] = useState(() => {
+        const isRunning = localStorage.getItem('sm_timer_running') === 'true';
+        const start = Number(localStorage.getItem('sm_timer_start_time')) || null;
+        const seconds = Number(localStorage.getItem('sm_timer_seconds') || 0);
+        if (isRunning && start) {
+            return seconds + Math.floor((Date.now() - start) / 1000);
+        }
+        return seconds;
+    });
 
     // Persist timer state whenever it changes
     useEffect(() => {
@@ -930,8 +1123,13 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
             localStorage.setItem('sm_timer_subject', timerSubject);
             localStorage.setItem('sm_timer_seconds', String(timerSeconds));
             localStorage.setItem('sm_timer_running', String(isTimerRunning));
+            if (timerStartTime) {
+                localStorage.setItem('sm_timer_start_time', String(timerStartTime));
+            } else {
+                localStorage.removeItem('sm_timer_start_time');
+            }
         }
-    }, [timerSubject, timerSeconds, isTimerRunning, readOnly]);
+    }, [timerSubject, timerSeconds, isTimerRunning, timerStartTime, readOnly]);
 
     const [revisions, setRevisions] = useState<RevisionItem[]>([]);
     const [simulados, setSimulados] = useState<Simulado[]>([]);
@@ -939,7 +1137,7 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
     const [studySessions, setStudySessions] = useState<StudySession[]>([]);
     const [materials, setMaterials] = useState<Material[]>([]);
     const [editais, setEditais] = useState<Edital[]>([]);
-    const [activeEditalId, setActiveEditalId] = useState<string>('');
+    const [activeEditalId, setActiveEditalId] = useState<string>(localStorage.getItem('sm_active_edital') || '');
     const [editalProgress, setEditalProgress] = useState<EditalProgress[]>([]);
     const [commandMessage, setCommandMessage] = useState('');
     const [tutorialUrl, setTutorialUrl] = useState('');
@@ -954,6 +1152,7 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
     const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
     const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
     const [viewMaterial, setViewMaterial] = useState<Material | null>(null);
+    const [isInitialLoading, setIsInitialLoading] = useState(true);
     const [notifications, setNotifications] = useState<{id: string, message: string, type: 'success' | 'error' | 'info'}[]>([]);
     
     const [quoteIndex, setQuoteIndex] = useState(0);
@@ -969,6 +1168,33 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
     
     // ONLINE Simulado State
     const [currentOnlineQIndex, setCurrentOnlineQIndex] = useState(0);
+
+    // --- DIALOG SYSTEM ---
+    const [dialog, setDialog] = useState<{
+        isOpen: boolean;
+        type: DialogType;
+        title: string;
+        message: string;
+        onConfirm?: (value?: string) => void;
+        inputPlaceholder?: string;
+    }>({ isOpen: false, type: 'alert', title: '', message: '' });
+
+    const showAlert = (title: string, message: string) => {
+        setDialog({ isOpen: true, type: 'alert', title, message, onConfirm: undefined });
+    };
+
+    const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+        setDialog({ isOpen: true, type: 'confirm', title, message, onConfirm });
+    };
+
+    const showPrompt = (title: string, message: string, onConfirm: (value: string) => void, placeholder?: string) => {
+        setDialog({ isOpen: true, type: 'prompt', title, message, onConfirm: (v) => onConfirm(v || ''), inputPlaceholder: placeholder });
+    };
+
+    const handleDialogConfirm = (value?: string) => {
+        if (dialog.onConfirm) dialog.onConfirm(value);
+        setDialog({ ...dialog, isOpen: false });
+    };
 
     const showNotification = (message: string, type: 'success' | 'error' | 'info') => {
         const id = Date.now().toString(); setNotifications(prev => [...prev, { id, message, type }]); setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), 3000);
@@ -986,6 +1212,7 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
     // Load Data from Supabase and Apply Filtering
     useEffect(() => {
         const loadStudentData = async () => {
+            setIsInitialLoading(true);
             const userId = user.id;
             
             // Global Content - FETCH ALL then FILTER
@@ -1027,6 +1254,7 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
                 setSchedule(loadedSchedule);
             }
             setGoals(loadedGoals); setStats(loadedStats); setRevisions(loadedRevisions); setSimuladoResults(loadedResults); setStudySessions(loadedSessions); setEditalProgress(loadedEditalProg);
+            setIsInitialLoading(false);
         };
         loadStudentData();
     }, [user.id, user.planId]); // Re-run if user or plan changes
@@ -1039,11 +1267,37 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
     // Timer Interval
     useEffect(() => {
         let interval: any;
+        
+        const updateTimer = () => {
+            if (isTimerRunning && timerStartTime && !readOnly) {
+                const elapsed = Math.floor((Date.now() - timerStartTime) / 1000);
+                setDisplaySeconds(timerSeconds + elapsed);
+            }
+        };
+
         if (isTimerRunning && !readOnly) {
-          interval = setInterval(() => { setTimerSeconds(s => s + 1); }, 1000);
-        } 
-        return () => clearInterval(interval);
-    }, [isTimerRunning, readOnly]);
+            if (!timerStartTime) {
+                const now = Date.now();
+                setTimerStartTime(now);
+                localStorage.setItem('sm_timer_start_time', String(now));
+            }
+            interval = setInterval(updateTimer, 1000);
+        } else {
+            setDisplaySeconds(timerSeconds);
+        }
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                updateTimer();
+            }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [isTimerRunning, readOnly, timerStartTime, timerSeconds]);
 
     // Override generic setters to sync with Supabase
     const sync = async (key: string, value: any) => {
@@ -1092,11 +1346,12 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
     const toggleGoal = (id: string) => { const updated = goals.map(g => g.id === id ? { ...g, completed: !g.completed } : g); setGoals(updated); sync('daily_goals', updated); };
     const removeGoal = (id: string) => { const updated = goals.filter(g => g.id !== id); setGoals(updated); sync('daily_goals', updated); };
     const handleFinishStudy = () => {
-        if (timerSeconds > 0 && timerSubject) {
-            if (readOnly) { setTimerSeconds(0); setIsTimerRunning(false); return; }
-            const newSession = { id: Date.now().toString(), subjectId: timerSubject, durationSeconds: timerSeconds, date: new Date().toISOString() };
+        const finalSeconds = isTimerRunning && timerStartTime ? timerSeconds + Math.floor((Date.now() - timerStartTime) / 1000) : timerSeconds;
+        if (finalSeconds > 0 && timerSubject) {
+            if (readOnly) { setTimerSeconds(0); setDisplaySeconds(0); setIsTimerRunning(false); setTimerStartTime(null); return; }
+            const newSession = { id: Date.now().toString(), subjectId: timerSubject, durationSeconds: finalSeconds, date: new Date().toISOString() };
             const updatedSessions = [...studySessions, newSession]; setStudySessions(updatedSessions); sync('study_sessions', updatedSessions);
-            const updatedSubjects = subjects.map(s => s.id === timerSubject ? { ...s, totalHoursStudied: s.totalHoursStudied + (timerSeconds / 3600) } : s);
+            const updatedSubjects = subjects.map(s => s.id === timerSubject ? { ...s, totalHoursStudied: s.totalHoursStudied + (finalSeconds / 3600) } : s);
             setSubjects(updatedSubjects); sync('subjects', updatedSubjects);
             const today = getLocalISODate();
             let newStreak = user.studyStreak || 0;
@@ -1110,10 +1365,11 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
             checkAchievements(stats, totalHours);
             
             // RESET AND CLEAR PERSISTENCE
-            setTimerSeconds(0); setIsTimerRunning(false); 
+            setTimerSeconds(0); setDisplaySeconds(0); setIsTimerRunning(false); setTimerStartTime(null);
             localStorage.removeItem('sm_timer_subject');
             localStorage.removeItem('sm_timer_seconds');
             localStorage.removeItem('sm_timer_running');
+            localStorage.removeItem('sm_timer_start_time');
 
             setQuoteIndex(Math.floor(Math.random() * MOTIVATIONAL_QUOTES.length)); showNotification("Estudo registrado!", "success");
         }
@@ -1184,10 +1440,11 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
     };
     const deleteRevisionGroup = (groupId: string | undefined, id: string) => {
         if (readOnly) return;
-        if(!window.confirm('Excluir?')) return;
-        const safeRevisions = revisions || [];
-        const updated = groupId ? safeRevisions.filter(r => r.groupId !== groupId) : safeRevisions.filter(r => r.id !== id);
-        setRevisions(updated); sync('revisions', updated);
+        showConfirm('Confirmação', 'Excluir?', () => {
+            const safeRevisions = revisions || [];
+            const updated = groupId ? safeRevisions.filter(r => r.groupId !== groupId) : safeRevisions.filter(r => r.id !== id);
+            setRevisions(updated); sync('revisions', updated);
+        });
     };
     const saveObjective = () => { if (readOnly) return; const updated = { ...user, objective }; updateProfile(updated); };
     const addSubjectToSchedule = (dIdx: number, sName: string) => { if (readOnly) return; const day = INITIAL_SCHEDULE_DAYS[dIdx]; const newSch = schedule.map(d => d.day === day ? { ...d, subjects: [...d.subjects, sName] } : d); setSchedule(newSch); sync('schedule', newSch); };
@@ -1205,6 +1462,16 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
     const studyDistributionData = subjects.map(subj => { const totalSeconds = filteredSessions.filter(session => session.subjectId === subj.id).reduce((acc, session) => acc + session.durationSeconds, 0); return { name: subj.name, hours: totalSeconds / 3600 }; }).sort((a, b) => b.hours - a.hours);
     const recentSessions = studySessions.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
     const recentSimulados = simuladoResults.sort((a,b) => new Date(b.dateTaken).getTime() - new Date(a.dateTaken).getTime()).slice(0, 5);
+
+    if (isInitialLoading) {
+        return (
+            <div className="min-h-screen bg-[#09090b] flex flex-col items-center justify-center p-6 text-center">
+                <div className="w-16 h-16 border-4 border-red-600/20 border-t-red-600 rounded-full animate-spin mb-6"></div>
+                <h2 className="text-xl font-black text-white uppercase tracking-tighter mb-2">Sincronizando com o Comando...</h2>
+                <p className="text-zinc-500 text-sm max-w-xs">Aguarde enquanto carregamos suas diretrizes táticas e progresso de combate.</p>
+            </div>
+        );
+    }
 
     if (activeSimulado) {
         return (
@@ -1338,7 +1605,14 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4"><div className="bg-[#18181b] border border-zinc-800 p-4 rounded-xl shadow-sm hover:border-red-600 transition flex flex-col justify-between h-24"><div className="flex justify-between items-start"><p className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Horas Estudadas</p><Clock className="text-red-600" size={18}/></div><h3 className="text-2xl font-bold text-white">{(filteredSessions.reduce((acc: number,s) => acc+s.durationSeconds,0)/3600).toFixed(1)}h</h3></div><div className="bg-[#18181b] border border-zinc-800 p-4 rounded-xl shadow-sm hover:border-red-600 transition flex flex-col justify-between h-24"><div className="flex justify-between items-start"><p className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Questões Feitas</p><Target className="text-white" size={18}/></div><h3 className="text-2xl font-bold text-white">{filteredHistory.reduce((acc: number,h) => acc+h.count, 0)}</h3></div><div className="bg-[#18181b] border border-zinc-800 p-4 rounded-xl shadow-sm hover:border-red-600 transition flex flex-col justify-between h-24"><div className="flex justify-between items-start"><p className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Simulados</p><FileText className="text-blue-500" size={18}/></div><h3 className="text-2xl font-bold text-white">{simuladoResults.filter(s => filterByPeriod(s.dateTaken)).length}</h3></div><div className="bg-[#18181b] border border-zinc-800 p-4 rounded-xl shadow-sm hover:border-red-600 transition flex flex-col justify-between h-24"><div className="flex justify-between items-start"><p className="text-[10px] text-zinc-500 uppercase font-bold tracking-widest">Aproveitamento</p><BarChart2 className="text-green-500" size={18}/></div><h3 className="text-2xl font-bold text-white">{stats.total>0?Math.round((stats.correct/stats.total)*100):0}%</h3></div></div><div className="bg-[#18181b] border border-zinc-800 p-6 rounded-xl"><h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><Clock size={18} className="text-blue-500"/> Distribuição de Tempo por Matéria</h3><div className="w-full h-[600px]"><StudyHoursChart data={studyDistributionData} /></div></div><div className="grid grid-cols-1 lg:grid-cols-2 gap-6"><div className="bg-[#18181b] border border-zinc-800 p-6 rounded-xl flex flex-col"><h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><TrendingUp size={18} className="text-green-500"/> Histórico de Missões (Estudo)</h3><div className="flex-1 overflow-y-auto max-h-[300px] custom-scrollbar pr-2 space-y-2">{recentSessions.map(session => (<div key={session.id} className="flex justify-between items-center p-3 bg-zinc-900 rounded border border-zinc-800"><div className="flex items-center gap-3"><div className="p-2 bg-green-900/20 rounded-full text-green-500"><CheckCircle size={16}/></div><div><p className="text-sm font-bold text-white">{subjects.find(s => s.id === session.subjectId)?.name || 'Estudo Livre'}</p><p className="text-xs text-zinc-500">{new Date(session.date).toLocaleDateString('pt-BR')}</p></div></div><span className="text-sm font-mono text-green-400 font-bold">{formatTime(session.durationSeconds)}</span></div>))} {recentSessions.length === 0 && <p className="text-zinc-500 text-sm text-center py-4">Nenhum registro recente.</p>}</div></div><div className="bg-[#18181b] border border-zinc-800 p-6 rounded-xl flex flex-col"><h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><Trophy size={18} className="text-yellow-500"/> Relatório de Combate (Simulados)</h3><div className="flex-1 overflow-y-auto max-h-[300px] custom-scrollbar pr-2 space-y-2">{recentSimulados.map(result => { const simTitle = simulados.find(s => s.id === result.simuladoId)?.title || 'Simulado'; const isApproved = result.score >= 7; return (<div key={result.simuladoId + result.dateTaken} className="flex justify-between items-center p-3 bg-zinc-900 rounded border border-zinc-800"><div className="flex items-center gap-3"><div className={`p-2 rounded-full ${isApproved ? 'bg-green-900/20 text-green-500' : 'bg-red-900/20 text-red-500'}`}><Target size={16}/></div><div><p className="text-sm font-bold text-white truncate max-w-[150px]">{simTitle}</p><p className="text-xs text-zinc-500">{new Date(result.dateTaken).toLocaleDateString('pt-BR')}</p></div></div><div className="text-right"><p className={`text-sm font-bold ${isApproved ? 'text-green-500' : 'text-red-500'}`}>{result.score.toFixed(1)}/10</p><span className="text-[10px] uppercase font-bold tracking-wide text-zinc-600">{isApproved ? 'APROVADO' : 'QAP'}</span></div></div>); })} {recentSimulados.length === 0 && <p className="text-zinc-500 text-sm text-center py-4">Nenhum simulado realizado.</p>}</div></div></div></div>}
                 
                 {/* ... other student tabs ... */}
-                {activeTab === 'estudo' && <div className="space-y-6 animate-fade-in pb-20"><div className="bg-[#18181b] rounded-xl border border-zinc-800 p-6"><div className="flex items-center gap-2 mb-4 text-red-500 font-bold text-lg"><CheckSquare /> <h3>Meta do Dia</h3></div><div className="space-y-2 mb-4">{goals.map(g => (<div key={g.id} className="flex items-center gap-3 group"><button onClick={() => toggleGoal(g.id)} className={`w-5 h-5 rounded border flex items-center justify-center transition ${g.completed ? 'bg-red-600 border-red-600 text-white' : 'border-zinc-600 hover:border-red-500'}`}>{g.completed && <CheckCircle size={14}/>}</button><span className={`flex-1 text-sm ${g.completed ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>{g.text}</span><button onClick={() => removeGoal(g.id)} className="text-zinc-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"><Trash2 size={16}/></button></div>))}{goals.length === 0 && <p className="text-zinc-600 italic text-sm">Nenhuma meta definida para hoje.</p>}</div><div className="flex gap-2"><input type="text" value={newGoalText} onChange={e => setNewGoalText(e.target.value)} onKeyDown={e => e.key === 'Enter' && addGoal()} placeholder="Nova meta..." className="flex-1 bg-[#09090b] border border-zinc-700 rounded p-2 text-white outline-none focus:border-red-600"/><button onClick={addGoal} className="bg-red-600 text-white px-4 rounded hover:bg-red-700"><Plus/></button></div></div><div className="bg-zinc-900 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-800 via-zinc-900 to-black rounded-xl border-t-4 border-red-600 p-8 shadow-2xl flex flex-col items-center justify-center relative overflow-hidden ring-1 ring-zinc-800"><div className="absolute inset-0 opacity-10 bg-[length:30px_30px] bg-[position:0_0,15px_15px]"></div><div className="relative z-10 w-full flex flex-col items-center"><h3 className="text-zinc-500 text-xs font-bold tracking-[0.2em] uppercase mb-4">Cronômetro Tático</h3><div className="text-7xl md:text-8xl font-mono font-bold text-white tracking-widest mb-6 drop-shadow-md">{formatTime(timerSeconds)}</div><p className="text-yellow-500 italic text-sm md:text-base mb-8 text-center max-w-2xl">"{MOTIVATIONAL_QUOTES[quoteIndex]}"</p>{!isTimerRunning && !timerSeconds ? (<div className="w-full max-w-md mb-6"><select value={timerSubject} onChange={e => setTimerSubject(e.target.value)} className="w-full bg-zinc-900/80 border border-zinc-700 text-white p-3 rounded-lg outline-none focus:border-red-600 backdrop-blur-sm"><option value="">Selecione a matéria para iniciar...</option>{subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>) : (<div className="mb-6 px-4 py-1 rounded bg-zinc-900/80 text-zinc-400 text-xs font-bold uppercase tracking-wider border border-zinc-800 backdrop-blur-sm">{subjects.find(s => s.id === timerSubject)?.name || 'Estudo Livre'}</div>)}<div className="flex gap-4 w-full max-w-lg">{!isTimerRunning ? (<button onClick={() => { if(!timerSubject) return showNotification("Selecione uma matéria!", "error"); setIsTimerRunning(true); }} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-lg flex items-center justify-center gap-2 transition shadow-lg hover:shadow-green-900/50"><Play size={20}/> INICIAR</button>) : (<button onClick={() => setIsTimerRunning(false)} className="flex-1 bg-zinc-700 hover:bg-zinc-600 text-white font-bold py-4 rounded-lg flex items-center justify-center gap-2 transition shadow-lg"><Pause size={20}/> PAUSAR</button>)}<button onClick={handleFinishStudy} disabled={timerSeconds === 0} className={`flex-1 font-bold py-4 rounded-lg flex items-center justify-center gap-2 transition shadow-lg ${timerSeconds > 0 ? 'bg-red-900/80 hover:bg-red-800 text-white border border-red-700 hover:shadow-red-900/50' : 'bg-zinc-900 text-zinc-600 cursor-not-allowed'}`}><StopCircle size={20}/> TERMINAR</button></div></div></div><div className="grid grid-cols-1 lg:grid-cols-3 gap-6"><div className="lg:col-span-2 bg-[#18181b] rounded-xl border border-zinc-800 p-6 flex flex-col"><h3 className="text-xl font-bold text-white mb-6">Cronograma Semanal</h3><div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 overflow-y-auto max-h-[500px] pr-2 custom-scrollbar">{schedule.map((dayItem, dIdx) => (<div key={dayItem.day} className="bg-[#09090b] p-4 rounded-lg border border-zinc-800"><h4 className="font-bold text-red-500 mb-3">{dayItem.day}</h4><div className="space-y-2 mb-3">{dayItem.subjects.map((subj, sIdx) => (<div key={sIdx} className="flex justify-between items-center bg-zinc-800 px-3 py-2 rounded text-sm text-zinc-200 group"><span>{subj}</span><button onClick={() => removeSubjectFromSchedule(dIdx, sIdx)} className="text-zinc-500 hover:text-red-500 opacity-60 group-hover:opacity-100"><XCircle size={14}/></button></div>))}{dayItem.subjects.length === 0 && <span className="text-xs text-zinc-600 italic">Descanso / Livre</span>}</div><select onChange={(e) => { if(e.target.value) { addSubjectToSchedule(dIdx, e.target.value); e.target.value = ""; } }} className="w-full bg-zinc-900 border border-zinc-700 text-zinc-400 text-xs rounded p-2 outline-none focus:border-red-600"><option value="">+ Adicionar Matéria</option>{subjects.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}</select></div>))}</div></div><div className="bg-[#18181b] rounded-xl border border-zinc-800 p-6 flex flex-col"><h3 className="text-xl font-bold text-white mb-4">Contador de Questões</h3><div className="flex-1 flex flex-col items-center justify-center"><div className="w-full relative mb-4 p-2 bg-[#09090b] rounded-lg border border-zinc-800/50"><h4 className="text-xs font-bold text-center text-zinc-400 mb-2 uppercase tracking-wide">Desempenho Geral</h4><QuestionPieChart correct={stats.correct} incorrect={stats.incorrect} /></div><div className="w-full grid grid-cols-2 gap-4 mb-4"><div className="bg-[#09090b] p-3 rounded-lg border border-green-900/30 flex flex-col items-center"><span className="text-green-500 font-bold mb-2 text-sm">Acertos (+{manualCorrect})</span><div className="flex items-center gap-3"><button onClick={() => setManualCorrect(Math.max(0, manualCorrect - 1))} className="w-8 h-8 rounded bg-zinc-800 text-white flex items-center justify-center hover:bg-zinc-700">-</button><span className="text-xl font-bold text-white w-8 text-center">{manualCorrect}</span><button onClick={() => setManualCorrect(manualCorrect + 1)} className="w-8 h-8 rounded bg-green-600 text-white flex items-center justify-center hover:bg-green-700">+</button></div></div><div className="bg-[#09090b] p-3 rounded-lg border border-red-900/30 flex flex-col items-center"><span className="text-red-500 font-bold mb-2 text-sm">Erros (+{manualWrong})</span><div className="flex items-center gap-3"><button onClick={() => setManualWrong(Math.max(0, manualWrong - 1))} className="w-8 h-8 rounded bg-zinc-800 text-white flex items-center justify-center hover:bg-zinc-700">-</button><span className="text-xl font-bold text-white w-8 text-center">{manualWrong}</span><button onClick={() => setManualWrong(manualWrong + 1)} className="w-8 h-8 rounded bg-red-600 text-white flex items-center justify-center hover:bg-red-700">+</button></div></div></div><button onClick={() => { updateStats(manualCorrect, manualWrong); setManualCorrect(0); setManualWrong(0); showNotification("Questões registradas!", "success"); }} className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 font-bold py-3 rounded-lg transition">Atualizar Contador</button></div></div></div></div>}
+                {activeTab === 'estudo' && <div className="space-y-6 animate-fade-in pb-20"><div className="bg-[#18181b] rounded-xl border border-zinc-800 p-6"><div className="flex items-center gap-2 mb-4 text-red-500 font-bold text-lg"><CheckSquare /> <h3>Meta do Dia</h3></div><div className="space-y-2 mb-4">{goals.map(g => (<div key={g.id} className="flex items-center gap-3 group"><button onClick={() => toggleGoal(g.id)} className={`w-5 h-5 rounded border flex items-center justify-center transition ${g.completed ? 'bg-red-600 border-red-600 text-white' : 'border-zinc-600 hover:border-red-500'}`}>{g.completed && <CheckCircle size={14}/>}</button><span className={`flex-1 text-sm ${g.completed ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>{g.text}</span><button onClick={() => removeGoal(g.id)} className="text-zinc-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"><Trash2 size={16}/></button></div>))}{goals.length === 0 && <p className="text-zinc-600 italic text-sm">Nenhuma meta definida para hoje.</p>}</div><div className="flex gap-2"><input type="text" value={newGoalText} onChange={e => setNewGoalText(e.target.value)} onKeyDown={e => e.key === 'Enter' && addGoal()} placeholder="Nova meta..." className="flex-1 bg-[#09090b] border border-zinc-700 rounded p-2 text-white outline-none focus:border-red-600"/><button onClick={addGoal} className="bg-red-600 text-white px-4 rounded hover:bg-red-700"><Plus/></button></div></div><div className="bg-zinc-900 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-zinc-800 via-zinc-900 to-black rounded-xl border-t-4 border-red-600 p-8 shadow-2xl flex flex-col items-center justify-center relative overflow-hidden ring-1 ring-zinc-800"><div className="absolute inset-0 opacity-10 bg-[length:30px_30px] bg-[position:0_0,15px_15px]"></div><div className="relative z-10 w-full flex flex-col items-center"><h3 className="text-zinc-500 text-xs font-bold tracking-[0.2em] uppercase mb-4">Cronômetro Tático</h3><div className="text-7xl md:text-8xl font-mono font-bold text-white tracking-widest mb-6 drop-shadow-md">{formatTime(displaySeconds)}</div><p className="text-yellow-500 italic text-sm md:text-base mb-8 text-center max-w-2xl">"{MOTIVATIONAL_QUOTES[quoteIndex]}"</p>{!isTimerRunning && !timerSeconds ? (<div className="w-full max-w-md mb-6"><select value={timerSubject} onChange={e => setTimerSubject(e.target.value)} className="w-full bg-zinc-900/80 border border-zinc-700 text-white p-3 rounded-lg outline-none focus:border-red-600 backdrop-blur-sm"><option value="">Selecione a matéria para iniciar...</option>{subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select></div>) : (<div className="mb-6 px-4 py-1 rounded bg-zinc-900/80 text-zinc-400 text-xs font-bold uppercase tracking-wider border border-zinc-800 backdrop-blur-sm">{subjects.find(s => s.id === timerSubject)?.name || 'Estudo Livre'}</div>)}<div className="flex gap-4 w-full max-w-lg">{!isTimerRunning ? (<button onClick={() => { if(!timerSubject) return showNotification("Selecione uma matéria!", "error"); setIsTimerRunning(true); }} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-4 rounded-lg flex items-center justify-center gap-2 transition shadow-lg hover:shadow-green-900/50"><Play size={20}/> INICIAR</button>) : (<button onClick={() => { 
+    const currentElapsed = timerStartTime ? Math.floor((Date.now() - timerStartTime) / 1000) : 0;
+    const newSeconds = timerSeconds + currentElapsed;
+    setTimerSeconds(newSeconds); 
+    setDisplaySeconds(newSeconds);
+    setTimerStartTime(null); 
+    setIsTimerRunning(false); 
+}} className="flex-1 bg-zinc-700 hover:bg-zinc-600 text-white font-bold py-4 rounded-lg flex items-center justify-center gap-2 transition shadow-lg"><Pause size={20}/> PAUSAR</button>)}<button onClick={handleFinishStudy} disabled={displaySeconds === 0} className={`flex-1 font-bold py-4 rounded-lg flex items-center justify-center gap-2 transition shadow-lg ${displaySeconds > 0 ? 'bg-red-900/80 hover:bg-red-800 text-white border border-red-700 hover:shadow-red-900/50' : 'bg-zinc-900 text-zinc-600 cursor-not-allowed'}`}><StopCircle size={20}/> TERMINAR</button></div></div></div><div className="grid grid-cols-1 lg:grid-cols-3 gap-6"><div className="lg:col-span-2 bg-[#18181b] rounded-xl border border-zinc-800 p-6 flex flex-col"><h3 className="text-xl font-bold text-white mb-6">Cronograma Semanal</h3><div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 overflow-y-auto max-h-[500px] pr-2 custom-scrollbar">{schedule.map((dayItem, dIdx) => (<div key={dayItem.day} className="bg-[#09090b] p-4 rounded-lg border border-zinc-800"><h4 className="font-bold text-red-500 mb-3">{dayItem.day}</h4><div className="space-y-2 mb-3">{dayItem.subjects.map((subj, sIdx) => (<div key={sIdx} className="flex justify-between items-center bg-zinc-800 px-3 py-2 rounded text-sm text-zinc-200 group"><span>{subj}</span><button onClick={() => removeSubjectFromSchedule(dIdx, sIdx)} className="text-zinc-500 hover:text-red-500 opacity-60 group-hover:opacity-100"><XCircle size={14}/></button></div>))}{dayItem.subjects.length === 0 && <span className="text-xs text-zinc-600 italic">Descanso / Livre</span>}</div><select onChange={(e) => { if(e.target.value) { addSubjectToSchedule(dIdx, e.target.value); e.target.value = ""; } }} className="w-full bg-zinc-900 border border-zinc-700 text-zinc-400 text-xs rounded p-2 outline-none focus:border-red-600"><option value="">+ Adicionar Matéria</option>{subjects.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}</select></div>))}</div></div><div className="bg-[#18181b] rounded-xl border border-zinc-800 p-6 flex flex-col"><h3 className="text-xl font-bold text-white mb-4">Contador de Questões</h3><div className="flex-1 flex flex-col items-center justify-center"><div className="w-full relative mb-4 p-2 bg-[#09090b] rounded-lg border border-zinc-800/50"><h4 className="text-xs font-bold text-center text-zinc-400 mb-2 uppercase tracking-wide">Desempenho Geral</h4><QuestionPieChart correct={stats.correct} incorrect={stats.incorrect} /></div><div className="w-full grid grid-cols-2 gap-4 mb-4"><div className="bg-[#09090b] p-3 rounded-lg border border-green-900/30 flex flex-col items-center"><span className="text-green-500 font-bold mb-2 text-sm">Acertos (+{manualCorrect})</span><div className="flex items-center gap-3"><button onClick={() => setManualCorrect(Math.max(0, manualCorrect - 1))} className="w-8 h-8 rounded bg-zinc-800 text-white flex items-center justify-center hover:bg-zinc-700">-</button><span className="text-xl font-bold text-white w-8 text-center">{manualCorrect}</span><button onClick={() => setManualCorrect(manualCorrect + 1)} className="w-8 h-8 rounded bg-green-600 text-white flex items-center justify-center hover:bg-green-700">+</button></div></div><div className="bg-[#09090b] p-3 rounded-lg border border-red-900/30 flex flex-col items-center"><span className="text-red-500 font-bold mb-2 text-sm">Erros (+{manualWrong})</span><div className="flex items-center gap-3"><button onClick={() => setManualWrong(Math.max(0, manualWrong - 1))} className="w-8 h-8 rounded bg-zinc-800 text-white flex items-center justify-center hover:bg-zinc-700">-</button><span className="text-xl font-bold text-white w-8 text-center">{manualWrong}</span><button onClick={() => setManualWrong(manualWrong + 1)} className="w-8 h-8 rounded bg-red-600 text-white flex items-center justify-center hover:bg-red-700">+</button></div></div></div><button onClick={() => { updateStats(manualCorrect, manualWrong); setManualCorrect(0); setManualWrong(0); showNotification("Questões registradas!", "success"); }} className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 font-bold py-3 rounded-lg transition">Atualizar Contador</button></div></div></div></div>}
                 
                 {/* ... other tabs ... */}
                 {activeTab === 'revisoes' && (
@@ -1421,16 +1695,71 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
                      <div className="space-y-6 animate-fade-in"><h2 className="text-2xl font-bold dark:text-white flex items-center gap-2"><Target className="text-red-600"/> Campo de Batalha (Simulados)</h2><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{simulados.map(sim => { const bestResult = simuladoResults.filter(r => r.simuladoId === sim.id).sort((a,b) => b.score - a.score)[0]; const lastResult = simuladoResults.filter(r => r.simuladoId === sim.id).sort((a,b) => new Date(b.dateTaken).getTime() - new Date(a.dateTaken).getTime())[0]; return (<div key={sim.id} className="bg-white dark:bg-[#18181b] rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden hover:border-red-600 transition shadow-sm flex flex-col"><div className="h-32 bg-zinc-800 relative flex items-center justify-center">{sim.coverImage ? <img src={sim.coverImage} className="w-full h-full object-cover opacity-50"/> : <FileText size={48} className="text-zinc-600"/>}<span className="absolute bottom-2 right-2 bg-black/70 text-white text-xs px-2 py-1 rounded font-mono">{sim.questionCount} Questões</span></div><div className="p-6 flex-1 flex flex-col"><h3 className="font-bold text-lg dark:text-white mb-2">{sim.title}</h3><p className="text-sm text-zinc-500 mb-4 line-clamp-2">{sim.instructions}</p><div className="mt-auto space-y-3">{bestResult && (<div className="flex justify-between items-center text-xs text-zinc-500 bg-zinc-100 dark:bg-zinc-900 p-2 rounded"><span>Melhor Nota:</span><span className={`font-bold ${bestResult.score >= 7 ? 'text-green-500' : 'text-red-500'}`}>{bestResult.score.toFixed(1)}</span></div>)}<div className="grid grid-cols-2 gap-2"><button onClick={() => startSimulado(sim)} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 rounded text-sm transition text-center">INICIAR</button>{lastResult && <button onClick={() => startSimulado(sim, true, lastResult.studentAnswers)} className="border border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 font-bold py-2 rounded text-sm transition text-center">GABARITO</button>}</div></div></div></div>); })}{simulados.length === 0 && <p className="col-span-3 text-center text-zinc-500 italic py-10">Nenhum simulado disponível para o seu plano.</p>}</div></div>
                 )}
                 {activeTab === 'edital' && (
-                     <div className="space-y-6 animate-fade-in"><div className="flex justify-between items-end mb-4"><div><h2 className="text-2xl font-bold dark:text-white flex items-center gap-2"><CheckSquare className="text-red-600"/> Edital Verticalizado</h2></div>{editais.length > 1 && (<select value={activeEditalId} onChange={(e) => setActiveEditalId(e.target.value)} className="bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded p-2 text-sm outline-none">{editais.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}</select>)}</div>
+                     <div className="space-y-6 animate-fade-in">
+                         <div className="flex justify-between items-end mb-4">
+                             <div>
+                                 <h2 className="text-2xl font-bold dark:text-white flex items-center gap-2">
+                                     <CheckSquare className="text-red-600"/> Edital Verticalizado
+                                 </h2>
+                             </div>
+                             {activeEditalId && (
+                                 <button 
+                                     onClick={() => { setActiveEditalId(''); localStorage.removeItem('sm_active_edital'); }}
+                                     className="text-sm text-zinc-400 hover:text-white transition-colors"
+                                 >
+                                     Voltar para Editais
+                                 </button>
+                             )}
+                         </div>
                      {editais.length === 0 ? <p className="text-zinc-500 italic">Nenhum edital disponível para o seu plano.</p> : (
                      <>
-                     <div className="bg-[#18181b] p-4 rounded-xl border border-zinc-800 mb-6"><div className="flex justify-between items-center mb-2"><span className="text-white font-bold text-sm">Progresso Global</span><span className="text-red-500 font-bold text-sm">{calculateEditalProgress()}%</span></div><div className="w-full bg-zinc-800 rounded-full h-2.5"><div className="bg-red-600 h-2.5 rounded-full transition-all duration-500" style={{ width: `${calculateEditalProgress()}%` }}></div></div></div><div className="space-y-4">{editais.find(e => e.id === activeEditalId)?.subjects.map(subject => { const subjectTopics = subject.topics.map(t => t.id); const completedCount = editalProgress.filter(p => subjectTopics.includes(p.topicId)).length; const totalCount = subjectTopics.length; const isComplete = totalCount > 0 && completedCount === totalCount; return (<div key={subject.id} className="bg-white dark:bg-[#18181b] rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden"><div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 flex justify-between items-center border-b border-zinc-200 dark:border-zinc-800"><h3 className="font-bold dark:text-white flex items-center gap-2">{isComplete && <CheckCircle size={16} className="text-green-500"/>}{subject.name}</h3><span className="text-xs font-bold bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 px-2 py-1 rounded">{completedCount}/{totalCount}</span></div><div className="divide-y divide-zinc-100 dark:divide-zinc-800">{subject.topics.map(topic => { const isChecked = editalProgress.some(p => p.topicId === topic.id); return (<div key={topic.id} onClick={() => toggleEditalTopic(topic.id)} className={`p-4 flex items-center gap-3 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition ${isChecked ? 'bg-red-50/50 dark:bg-red-900/10' : ''}`}><div className={`w-5 h-5 rounded border flex items-center justify-center transition ${isChecked ? 'bg-red-600 border-red-600 text-white' : 'border-zinc-300 dark:border-zinc-600'}`}>{isChecked && <Check size={12}/>}</div><span className={`text-sm ${isChecked ? 'text-zinc-500 line-through' : 'text-zinc-700 dark:text-zinc-300'}`}>{topic.name}</span></div>); })}</div></div>); })}</div>
+                     {!activeEditalId ? (
+                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                             {editais.map(e => (
+                                 <div 
+                                     key={e.id} 
+                                     onClick={() => { setActiveEditalId(e.id); localStorage.setItem('sm_active_edital', e.id); }}
+                                     className="bg-[#18181b] rounded-xl border border-zinc-800 overflow-hidden hover:border-red-600 transition shadow-sm cursor-pointer flex flex-col items-center p-6"
+                                 >
+                                     <div className="w-24 h-24 mb-4 flex items-center justify-center bg-zinc-900 rounded-full border border-zinc-800">
+                                         {e.imageUrl ? (
+                                             <img src={e.imageUrl} alt="Brasão" className="w-16 h-16 object-contain" />
+                                         ) : (
+                                             <CheckSquare size={32} className="text-zinc-600" />
+                                         )}
+                                     </div>
+                                     <h3 className="font-bold text-lg text-white text-center">{e.title}</h3>
+                                     <p className="text-sm text-zinc-500 mt-2">{e.subjects.length} Matérias</p>
+                                 </div>
+                             ))}
+                         </div>
+                     ) : (
+                         <>
+                             <div className="bg-[#18181b] p-4 rounded-xl border border-zinc-800 mb-6"><div className="flex justify-between items-center mb-2"><span className="text-white font-bold text-sm">Progresso Global</span><span className="text-red-500 font-bold text-sm">{calculateEditalProgress()}%</span></div><div className="w-full bg-zinc-800 rounded-full h-2.5"><div className="bg-red-600 h-2.5 rounded-full transition-all duration-500" style={{ width: `${calculateEditalProgress()}%` }}></div></div></div><div className="space-y-4">{editais.find(e => e.id === activeEditalId)?.subjects.map(subject => { const subjectTopics = subject.topics.map(t => t.id); const completedCount = editalProgress.filter(p => subjectTopics.includes(p.topicId)).length; const totalCount = subjectTopics.length; const isComplete = totalCount > 0 && completedCount === totalCount; return (<div key={subject.id} className="bg-white dark:bg-[#18181b] rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden"><div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 flex justify-between items-center border-b border-zinc-200 dark:border-zinc-800"><h3 className="font-bold dark:text-white flex items-center gap-2">{isComplete && <CheckCircle size={16} className="text-green-500"/>}{subject.name}</h3><span className="text-xs font-bold bg-zinc-200 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 px-2 py-1 rounded">{completedCount}/{totalCount}</span></div><div className="divide-y divide-zinc-100 dark:divide-zinc-800">{subject.topics.map(topic => { const isChecked = editalProgress.some(p => p.topicId === topic.id); return (<div key={topic.id} onClick={() => toggleEditalTopic(topic.id)} className={`p-4 flex items-center gap-3 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition ${isChecked ? 'bg-red-50/50 dark:bg-red-900/10' : ''}`}><div className={`w-5 h-5 rounded border flex items-center justify-center transition ${isChecked ? 'bg-red-600 border-red-600 text-white' : 'border-zinc-300 dark:border-zinc-600'}`}>{isChecked && <Check size={12}/>}</div><span className={`text-sm ${isChecked ? 'text-zinc-500 line-through' : 'text-zinc-700 dark:text-zinc-300'}`}>{topic.name}</span></div>); })}</div></div>); })}</div>
+                         </>
+                     )}
                      </>
                      )}
                      </div>
                 )}
-                {(activeTab === 'guiado' || activeTab === 'leiseca') && <div className="space-y-6 animate-fade-in"><h2 className="text-2xl font-bold dark:text-white flex items-center gap-2">{activeTab === 'guiado' ? <BookOpen className="text-red-600"/> : <Scale className="text-red-500"/>}{activeTab === 'guiado' ? 'Estudo Guiado' : 'Lei Seca'}</h2>{viewState === 'SUBJECTS' && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">{[...new Set(materials.filter(m => m.category === (activeTab === 'guiado' ? 'GUIDED' : 'LEI_SECA')).map(m => m.subject))].map(subj => (<div key={subj} onClick={() => { setSelectedSubject(subj); setViewState('CONTENT_LIST'); }} className="bg-[#18181b] p-8 rounded-2xl border border-zinc-800 hover:border-zinc-600 cursor-pointer transition-all duration-300 shadow-lg hover:shadow-2xl hover:-translate-y-1 group flex flex-col items-center justify-center text-center h-64"><div className="w-24 h-24 rounded-full bg-[#09090b] border border-zinc-800 flex items-center justify-center mb-6 group-hover:border-zinc-600 transition-colors">{getSubjectIcon(subj, "text-zinc-400 group-hover:text-white transition-colors duration-300", 40)}</div><h3 className="font-bold text-lg text-white mb-2 group-hover:text-red-500 transition-colors">{subj}</h3></div>))}{materials.filter(m => m.category === (activeTab === 'guiado' ? 'GUIDED' : 'LEI_SECA')).length === 0 && <p className="col-span-4 text-center text-zinc-500 italic py-10">Nenhum material encontrado.</p>}</div>}{viewState === 'CONTENT_LIST' && selectedSubject && <div><button onClick={() => setViewState('SUBJECTS')} className="mb-4 flex items-center gap-1 text-zinc-500 hover:text-red-500"><ChevronLeft size={16}/> Voltar</button><h3 className="text-xl font-bold dark:text-white mb-6 border-l-4 border-red-600 pl-4">{selectedSubject}</h3><div className="space-y-3">{filteredMaterials.map(m => (<div key={m.id} onClick={() => { setViewMaterial(m); setViewState('CONTENT'); }} className="bg-white dark:bg-[#18181b] p-4 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:border-red-600 cursor-pointer flex justify-between items-center group"><div><h4 className="font-bold dark:text-white group-hover:text-red-500 transition">{m.title}</h4><p className="text-xs text-zinc-500">{m.topic}</p></div><ChevronRight size={18} className="text-zinc-400"/></div>))}</div></div>}{viewState === 'CONTENT' && viewMaterial && <div className="bg-white dark:bg-[#18181b] rounded-xl border border-zinc-200 dark:border-zinc-800 p-8"><div className="flex justify-between items-start mb-6 pb-6 border-b border-zinc-200 dark:border-zinc-800"><div><button onClick={() => setViewState('CONTENT_LIST')} className="mb-2 flex items-center gap-1 text-xs font-bold uppercase text-zinc-500 hover:text-red-500"><ChevronLeft size={14}/> Voltar</button><h2 className="text-2xl font-bold dark:text-white">{viewMaterial.title}</h2><span className="text-sm text-red-600 font-bold">{viewMaterial.subject}</span></div><div className="flex gap-2">{viewMaterial.videoUrl && <a href={viewMaterial.videoUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-red-700 transition shadow-lg shadow-red-900/20"><Video size={16}/> Vídeo</a>}{viewMaterial.questionsUrl && <a href={viewMaterial.questionsUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-900/20"><ListIcon size={16}/> Questões</a>}{viewMaterial.pdfUrl && <a href={viewMaterial.pdfUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 px-4 py-2 rounded text-sm font-bold hover:bg-zinc-200 dark:hover:bg-zinc-600 transition"><FileText size={16}/> PDF</a>}</div></div><div className="prose prose-zinc dark:prose-invert max-w-none text-zinc-300 whitespace-pre-wrap" dangerouslySetInnerHTML={{__html: viewMaterial.contentHtml}} /></div>}</div>}
-                {activeTab === 'perfil' && <div className="space-y-6 animate-fade-in"><h2 className="text-2xl font-bold dark:text-white flex items-center gap-2"><UserIcon className="text-red-600"/> Meu Perfil</h2><div className="bg-[#18181b] p-6 rounded-xl border border-zinc-800 flex flex-col md:flex-row items-center gap-6"><div className="relative group"><div className="w-32 h-32 rounded-full overflow-hidden border-4 border-zinc-700 group-hover:border-red-600 transition">{user.avatar ? <img src={user.avatar} className="w-full h-full object-cover" alt="Avatar"/> : <UserIcon className="w-full h-full p-6 text-zinc-500"/>}</div><label className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition cursor-pointer rounded-full"><Camera className="text-white"/><input type="file" accept="image/*" onChange={handleAvatarChange} className="hidden"/></label></div><div className="flex-1 text-center md:text-left"><h3 className="text-2xl font-bold text-white mb-1">{user.name}</h3><p className="text-zinc-400 mb-4">{user.email}</p><div className="flex flex-wrap gap-2 justify-center md:justify-start">{user.achievements.filter(a => a.unlocked).map(a => (<span key={a.id} className="text-xl" title={a.title}>{a.icon}</span>))}</div></div></div><div className="bg-[#18181b] p-6 rounded-xl border border-zinc-800"><h3 className="text-lg font-bold text-white mb-4">Objetivo</h3><div className="flex gap-4"><input value={objective} onChange={e => setObjective(e.target.value)} className="flex-1 bg-[#09090b] border border-zinc-700 text-white p-3 rounded-lg outline-none focus:border-red-600" placeholder="Qual o seu objetivo?" /><button onClick={saveObjective} className="bg-red-600 hover:bg-red-700 text-white font-bold px-6 rounded-lg">Salvar</button></div></div>
+                {(activeTab === 'guiado' || activeTab === 'leiseca') && <div className="space-y-6 animate-fade-in"><h2 className="text-2xl font-bold dark:text-white flex items-center gap-2">{activeTab === 'guiado' ? <BookOpen className="text-red-600"/> : <Scale className="text-red-500"/>}{activeTab === 'guiado' ? 'Estudo Guiado' : 'Lei Seca'}</h2>{viewState === 'SUBJECTS' && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">{[...new Set(materials.filter(m => m.category === (activeTab === 'guiado' ? 'GUIDED' : 'LEI_SECA')).map(m => m.subject))].map(subj => (<div key={subj} onClick={() => { setSelectedSubject(subj); setViewState('CONTENT_LIST'); }} className="bg-[#18181b] p-8 rounded-2xl border border-zinc-800 hover:border-zinc-600 cursor-pointer transition-all duration-300 shadow-lg hover:shadow-2xl hover:-translate-y-1 group flex flex-col items-center justify-center text-center h-64"><div className="w-24 h-24 rounded-full bg-[#09090b] border border-zinc-800 flex items-center justify-center mb-6 group-hover:border-zinc-600 transition-colors">{getSubjectIcon(subj, "text-zinc-400 group-hover:text-white transition-colors duration-300", 40)}</div><h3 className="font-bold text-lg text-white mb-2 group-hover:text-red-500 transition-colors">{subj}</h3></div>))}{materials.filter(m => m.category === (activeTab === 'guiado' ? 'GUIDED' : 'LEI_SECA')).length === 0 && <p className="col-span-4 text-center text-zinc-500 italic py-10">Nenhum material encontrado.</p>}</div>}{viewState === 'CONTENT_LIST' && selectedSubject && <div><button onClick={() => setViewState('SUBJECTS')} className="mb-4 flex items-center gap-1 text-zinc-500 hover:text-red-500"><ChevronLeft size={16}/> Voltar</button><h3 className="text-xl font-bold dark:text-white mb-6 border-l-4 border-red-600 pl-4">{selectedSubject}</h3><div className="space-y-3">{filteredMaterials.map(m => (<div key={m.id} onClick={() => { setViewMaterial(m); setViewState('CONTENT'); }} className="bg-white dark:bg-[#18181b] p-4 rounded-lg border border-zinc-200 dark:border-zinc-800 hover:border-red-600 cursor-pointer flex justify-between items-center group"><div><h4 className="font-bold dark:text-white group-hover:text-red-500 transition">{m.title}</h4><p className="text-xs text-zinc-500">{m.topic}</p></div><ChevronRight size={18} className="text-zinc-400"/></div>))}</div></div>}{viewState === 'CONTENT' && viewMaterial && (
+    viewMaterial.category === 'LEI_SECA' ? (
+        <LeiSecaViewer 
+            material={viewMaterial} 
+            userId={user.id} 
+            onClose={() => setViewState('CONTENT_LIST')} 
+        />
+    ) : (
+        <div className="bg-white dark:bg-[#18181b] rounded-xl border border-zinc-200 dark:border-zinc-800 p-8"><div className="flex justify-between items-start mb-6 pb-6 border-b border-zinc-200 dark:border-zinc-800"><div><button onClick={() => setViewState('CONTENT_LIST')} className="mb-2 flex items-center gap-1 text-xs font-bold uppercase text-zinc-500 hover:text-red-500"><ChevronLeft size={14}/> Voltar</button><h2 className="text-2xl font-bold dark:text-white">{viewMaterial.title}</h2><span className="text-sm text-red-600 font-bold">{viewMaterial.subject}</span></div><div className="flex gap-2">{viewMaterial.videoUrl && <a href={viewMaterial.videoUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-red-700 transition shadow-lg shadow-red-900/20"><Video size={16}/> Vídeo</a>}{viewMaterial.questionsUrl && <a href={viewMaterial.questionsUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded text-sm font-bold hover:bg-blue-700 transition shadow-lg shadow-blue-900/20"><ListIcon size={16}/> Questões</a>}{viewMaterial.pdfUrl && <a href={viewMaterial.pdfUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-zinc-100 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-200 px-4 py-2 rounded text-sm font-bold hover:bg-zinc-200 dark:hover:bg-zinc-600 transition"><FileText size={16}/> PDF</a>}</div></div><div className="prose prose-zinc dark:prose-invert max-w-none text-zinc-300 whitespace-pre-wrap" dangerouslySetInnerHTML={{__html: viewMaterial.contentHtml}} /></div>
+    )
+)}</div>}
+                {activeTab === 'perfil' && <div className="space-y-6 animate-fade-in"><h2 className="text-2xl font-bold dark:text-white flex items-center gap-2"><UserIcon className="text-red-600"/> Meu Perfil</h2><div className="bg-[#18181b] p-6 rounded-xl border border-zinc-800 flex flex-col md:flex-row items-center gap-6"><div className="relative group"><div className="w-32 h-32 rounded-full overflow-hidden border-4 border-zinc-700 group-hover:border-red-600 transition">{user.avatar ? <img src={user.avatar} className="w-full h-full object-cover" alt="Avatar"/> : <UserIcon className="w-full h-full p-6 text-zinc-500"/>}</div><label className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition cursor-pointer rounded-full"><Camera className="text-white"/><input type="file" accept="image/*" onChange={handleAvatarChange} className="hidden"/></label></div><div className="flex-1 text-center md:text-left"><h3 className="text-2xl font-bold text-white mb-1">{user.name}</h3><p className="text-zinc-400 mb-4">{user.email}</p><div className="flex flex-wrap gap-2 justify-center md:justify-start">
+    {user.achievements.filter(a => a.unlocked).map(a => (
+        <div key={a.id} className="text-zinc-300" title={a.title}>
+            {getAchievementIcon(a.icon, "w-6 h-6")}
+        </div>
+    ))}
+</div></div></div><div className="bg-[#18181b] p-6 rounded-xl border border-zinc-800"><h3 className="text-lg font-bold text-white mb-4">Objetivo</h3><div className="flex gap-4"><input value={objective} onChange={e => setObjective(e.target.value)} className="flex-1 bg-[#09090b] border border-zinc-700 text-white p-3 rounded-lg outline-none focus:border-red-600" placeholder="Qual o seu objetivo?" /><button onClick={saveObjective} className="bg-red-600 hover:bg-red-700 text-white font-bold px-6 rounded-lg">Salvar</button></div></div>
                 <div className="bg-[#18181b] p-6 rounded-xl border border-zinc-800">
                     <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><Trophy className="text-yellow-500"/> Conquistas</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -1438,7 +1767,9 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
                             const unlocked = user.achievements.some(ua => ua.id === ach.id);
                             return (
                                 <div key={ach.id} className={`p-4 rounded-lg border flex flex-col items-center text-center ${unlocked ? 'bg-zinc-800 border-yellow-500/50' : 'bg-zinc-900/50 border-zinc-800 opacity-50'}`}>
-                                    <span className="text-3xl mb-2 grayscale-0">{ach.icon}</span>
+                                    <div className={`mb-2 ${unlocked ? 'text-yellow-500' : 'text-zinc-600'}`}>
+    {getAchievementIcon(ach.icon)}
+</div>
                                     <h4 className={`font-bold text-sm ${unlocked ? 'text-white' : 'text-zinc-500'}`}>{ach.title}</h4>
                                     <p className="text-[10px] text-zinc-400">{ach.description}</p>
                                 </div>
@@ -1495,6 +1826,15 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
                 {/* RENDER NEW STUDENT TABS */}
                 {activeTab === 'redacao' && <EssayPanel user={user} hasPremium={hasEssayAccess} />}
             </main>
+            <Dialog 
+                isOpen={dialog.isOpen} 
+                type={dialog.type} 
+                title={dialog.title} 
+                message={dialog.message} 
+                onConfirm={handleDialogConfirm} 
+                onCancel={() => setDialog({ ...dialog, isOpen: false })} 
+                inputPlaceholder={dialog.inputPlaceholder}
+            />
         </div>
     );
 };

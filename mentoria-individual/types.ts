@@ -9,6 +9,7 @@ export interface MentorshipTask {
   description: string;
   isCompleted: boolean;
   date?: string; // YYYY-MM-DD
+  originalDate?: string; // To allow perfect reset without new DB columns
 }
 
 export interface DailyMessage {
@@ -24,7 +25,11 @@ export interface MentorshipPlan {
   isActive: boolean;
   startDate: string;
   tasks: MentorshipTask[];
+  completedTasks?: MentorshipTask[]; // New field
+  originalTasks?: MentorshipTask[]; // To allow perfect reset
+  xp?: number; // Experience points
   messages: DailyMessage[];
+  weeklySchedule?: Record<string, string[]>;
 }
 
 export const DAYS_OF_WEEK = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];

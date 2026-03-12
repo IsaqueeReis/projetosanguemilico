@@ -1,5 +1,9 @@
 
 import { 
+  Baby,
+  Skull,
+  ChevronUp,
+  ChevronsUp,
   BookOpen, 
   CheckCircle, 
   Clock, 
@@ -75,10 +79,11 @@ import {
   Layers, 
   ChevronDown, 
   Database,
-  Save // Added
+  Save 
 } from 'lucide-react';
 
 export {
+  Baby, Skull, ChevronUp, ChevronsUp,
   BookOpen, CheckCircle, Clock, Target, BarChart2, Calendar, FileText, Video,
   LogOut, Settings, UserIcon, Award, Plus, Trash2, Play, Pause, ChevronRight,
   MessageCircle, ShieldAlert, Edit3, Upload, Search, CheckSquare, XCircle, LayoutDashboard,
