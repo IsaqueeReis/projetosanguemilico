@@ -372,7 +372,20 @@ const AdminDashboard = ({ user, onLogout }: { user: User; onLogout: () => void }
         if (currentList.includes(planId)) setList(currentList.filter(id => id !== planId));
         else setList([...currentList, planId]);
     };
-    const loadRankings = async () => { setRankingLoading(true); const data = []; for (const u of users) { if (u.role === UserRole.ADMIN || !u.approved) continue; const [sessions, stats, results] = await Promise.all([userProgressRepo.get(u.id, 'study_sessions', []), userProgressRepo.get(u.id, 'stats', { correct: 0, total: 0 }), userProgressRepo.get(u.id, 'simulado_results', [])]); data.push({ user: u, sessions: sessions as StudySession[], stats: stats as QuestionStats, results: results as SimuladoResult[] }); } setRankingData(data); setRankingLoading(false); };
+    const loadRankings = async () => { 
+        setRankingLoading(true); 
+        const validUsers = users.filter(u => u.role !== UserRole.ADMIN && u.approved);
+        const data = await Promise.all(validUsers.map(async (u) => {
+            const [sessions, stats, results] = await Promise.all([
+                userProgressRepo.get(u.id, 'study_sessions', []), 
+                userProgressRepo.get(u.id, 'stats', { correct: 0, total: 0 }), 
+                userProgressRepo.get(u.id, 'simulado_results', [])
+            ]); 
+            return { user: u, sessions: sessions as StudySession[], stats: stats as QuestionStats, results: results as SimuladoResult[] };
+        }));
+        setRankingData(data); 
+        setRankingLoading(false); 
+    };
     useEffect(() => { if (activeTab === 'ranking') loadRankings(); }, [activeTab, users]);
     const getFilteredSeconds = (sessions: StudySession[]) => { const now = new Date(); const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()); const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay()); const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1); const startOfYear = new Date(now.getFullYear(), 0, 1); return sessions.reduce((acc, s) => { const sDate = new Date(s.date); if (rankingPeriod === 'DAILY' && sDate >= startOfDay) return acc + s.durationSeconds; if (rankingPeriod === 'WEEKLY' && sDate >= startOfWeek) return acc + s.durationSeconds; if (rankingPeriod === 'MONTHLY' && sDate >= startOfMonth) return acc + s.durationSeconds; if (rankingPeriod === 'ANNUAL' && sDate >= startOfYear) return acc + s.durationSeconds; return acc; }, 0); };
     const sortedByHours = [...rankingData].sort((a,b) => getFilteredSeconds(b.sessions) - getFilteredSeconds(a.sessions)).slice(0, 10);

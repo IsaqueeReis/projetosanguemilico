@@ -42,6 +42,7 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
   const [taskType, setTaskType] = useState<TaskType>('AULA');
   const [taskSubject, setTaskSubject] = useState('');
   const [taskDesc, setTaskDesc] = useState('');
+  const [taskWeeks, setTaskWeeks] = useState(1);
 
   // Estados Edição de Tarefa
   const [editingTask, setEditingTask] = useState<MentorshipTask | null>(null);
@@ -156,19 +157,25 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
     while (targetDate.getDay() !== targetIndex) {
         targetDate.setDate(targetDate.getDate() + 1);
     }
-    const dateStr = getLocalDateStr(targetDate);
 
-    const newTask: MentorshipTask = {
-      id: Date.now().toString(), 
-      dayOfWeek: taskDay, 
-      type: taskType, 
-      subject: taskSubject, 
-      description: taskDesc, 
-      isCompleted: false,
-      date: dateStr // Agora possui data definida
-    };
+    const newTasks: MentorshipTask[] = [];
+    for (let i = 0; i < taskWeeks; i++) {
+        const taskDate = new Date(targetDate);
+        taskDate.setDate(taskDate.getDate() + (i * 7));
+        const dateStr = getLocalDateStr(taskDate);
 
-    const updatedPlan = { ...currentPlan, tasks: [...currentPlan.tasks, newTask] };
+        newTasks.push({
+          id: Date.now().toString() + i, 
+          dayOfWeek: taskDay, 
+          type: taskType, 
+          subject: taskSubject, 
+          description: taskDesc, 
+          isCompleted: false,
+          date: dateStr
+        });
+    }
+
+    const updatedPlan = { ...currentPlan, tasks: [...currentPlan.tasks, ...newTasks] };
     try {
         await MentorshipStorage.savePlan(updatedPlan);
     } catch (err) {
@@ -177,7 +184,7 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
         return;
     }
     setCurrentPlan(updatedPlan);
-    setTaskSubject(''); setTaskDesc('');
+    setTaskSubject(''); setTaskDesc(''); setTaskWeeks(1);
   };
 
   const handleDeleteTask = async (taskId: string) => {
@@ -1162,6 +1169,7 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
               <div><label className="text-xs text-zinc-500 font-bold uppercase">Tipo de Missão</label><select value={taskType} onChange={e => setTaskType(e.target.value as TaskType)} className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-sm text-white mt-1">{TASK_TYPES.map(t => <option key={t.type} value={t.type}>{t.label}</option>)}</select></div>
               <div><label className="text-xs text-zinc-500 font-bold uppercase">Matéria / Tópico</label><input type="text" value={taskSubject} onChange={e => setTaskSubject(e.target.value)} placeholder="Ex: Direito Penal - Art. 121" className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-sm text-white mt-1" /></div>
               <div><label className="text-xs text-zinc-500 font-bold uppercase">Detalhes (Opcional)</label><input type="text" value={taskDesc} onChange={e => setTaskDesc(e.target.value)} placeholder="Ex: Ler PDF pág. 10 a 30" className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-sm text-white mt-1" /></div>
+              <div><label className="text-xs text-zinc-500 font-bold uppercase">Repetir por (Semanas)</label><input type="number" min="1" max="52" value={taskWeeks} onChange={e => setTaskWeeks(parseInt(e.target.value) || 1)} className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-sm text-white mt-1" /></div>
               <button onClick={handleAddTask} className="w-full bg-zinc-100 hover:bg-white text-black font-bold py-2 rounded-lg flex items-center justify-center gap-2 mt-2 transition-all"><Icon name="plus" /> Adicionar ao Plano</button>
             </div>
           </div>

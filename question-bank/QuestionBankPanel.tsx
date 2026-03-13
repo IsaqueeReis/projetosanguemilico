@@ -3,13 +3,14 @@ import React, { useState, useEffect } from 'react';
 import { Filter, Play, CheckCircle, XCircle, Video, Book, AlertCircle, Search, RefreshCw, ChevronDown, ChevronUp, Crosshair, Target, Shield, Skull, BarChart2, Plus, Bookmark, List, Trash2, FolderOpen, Calendar } from 'lucide-react';
 import { QBQuestion, QBFilters, Difficulty, QuestionType, QBNotebook } from './types';
 import { QuestionBankService } from './service';
+import { StudentQuestionGenerator } from './StudentQuestionGenerator';
 import { supabase } from '../services/supabase';
 import { QuestionPieChart, EvolutionChart, PrecisionWaveChart } from '../components/ui/Charts';
 import { Dialog, DialogType } from '../components/ui/Dialog';
 
 export const QuestionBankPanel = ({ studentId }: { studentId: string }) => {
   // Navigation Tabs
-  const [activeTab, setActiveTab] = useState<'QUESTIONS' | 'PERFORMANCE' | 'NOTEBOOKS'>('QUESTIONS');
+  const [activeTab, setActiveTab] = useState<'QUESTIONS' | 'PERFORMANCE' | 'NOTEBOOKS' | 'GENERATE'>('QUESTIONS');
 
   // Common State
   const [questions, setQuestions] = useState<QBQuestion[]>([]);
@@ -297,6 +298,12 @@ export const QuestionBankPanel = ({ studentId }: { studentId: string }) => {
                 className={`flex items-center gap-2 px-6 py-3 rounded-t-lg font-bold text-sm uppercase tracking-wide border-b-2 transition-all ${activeTab === 'PERFORMANCE' ? 'bg-zinc-800 border-red-600 text-white' : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'}`}
             >
                 <BarChart2 size={18}/> Desempenho
+            </button>
+            <button 
+                onClick={() => setActiveTab('GENERATE')} 
+                className={`flex items-center gap-2 px-6 py-3 rounded-t-lg font-bold text-sm uppercase tracking-wide border-b-2 transition-all ${activeTab === 'GENERATE' ? 'bg-zinc-800 border-red-600 text-white' : 'bg-transparent border-transparent text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'}`}
+            >
+                <Plus size={18}/> Gerar Inéditas
             </button>
         </div>
       </header>
@@ -730,6 +737,16 @@ export const QuestionBankPanel = ({ studentId }: { studentId: string }) => {
                       )}
                   </div>
               </div>
+          </div>
+      )}
+
+      {/* --- TAB: GENERATE --- */}
+      {activeTab === 'GENERATE' && (
+          <div className="animate-fade-in">
+              <StudentQuestionGenerator onQuestionsGenerated={() => {
+                  setActiveTab('QUESTIONS');
+                  loadQuestions();
+              }} />
           </div>
       )}
 

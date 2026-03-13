@@ -18,7 +18,7 @@ export const AIGenerateQuestions = () => {
     try {
       const ai = new GoogleGenAI({ apiKey: API_KEY });
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+        model: 'gemini-3.1-flash-lite-preview',
         contents: `Generate ${count} multiple choice questions about ${topic} with difficulty ${difficulty}. Return as JSON array of objects with keys: statement, alternatives [{label, text, is_correct}], justification.`,
         config: {
           responseMimeType: "application/json",

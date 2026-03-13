@@ -25,7 +25,6 @@ export interface MentorshipPlan {
   isActive: boolean;
   startDate: string;
   tasks: MentorshipTask[];
-  completedTasks?: MentorshipTask[]; // New field
   originalTasks?: MentorshipTask[]; // To allow perfect reset
   xp?: number; // Experience points
   messages: DailyMessage[];

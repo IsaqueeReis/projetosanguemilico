@@ -13,6 +13,16 @@ export const MentorshipStorage = {
 
     if (error || !data) return null;
 
+    // Fetch extra data (xp, weeklySchedule) from user_progress
+    const { data: extraData } = await supabase
+      .from('user_progress')
+      .select('value')
+      .eq('user_id', studentId)
+      .eq('key', 'mentorship_extra')
+      .single();
+
+    const extra = extraData?.value || {};
+
     // Mapeia os campos do banco (snake_case) para a interface (camelCase)
     return {
         studentId: data.student_id,
@@ -20,10 +30,9 @@ export const MentorshipStorage = {
         isActive: data.is_active,
         startDate: data.start_date,
         tasks: data.tasks || [],
-        completedTasks: data.completed_tasks || [],
-        xp: data.xp || 0,
+        xp: extra.xp || 0,
         messages: data.messages || [],
-        weeklySchedule: data.weekly_schedule || undefined
+        weeklySchedule: extra.weeklySchedule || undefined
     };
   },
 
@@ -35,10 +44,7 @@ export const MentorshipStorage = {
         is_active: plan.isActive,
         start_date: plan.startDate,
         tasks: plan.tasks,
-        completed_tasks: plan.completedTasks || [],
-        xp: plan.xp || 0,
         messages: plan.messages,
-        weekly_schedule: plan.weeklySchedule,
         updated_at: new Date().toISOString()
     };
 
@@ -50,6 +56,19 @@ export const MentorshipStorage = {
         console.error('Erro ao salvar plano de mentoria:', error);
         throw error;
     }
+
+    // Save extra data
+    await supabase
+      .from('user_progress')
+      .upsert({
+        user_id: plan.studentId,
+        key: 'mentorship_extra',
+        value: {
+          xp: plan.xp || 0,
+          weeklySchedule: plan.weeklySchedule
+        },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id, key' });
   },
 
   // Inicializa um plano se não existir (Async)

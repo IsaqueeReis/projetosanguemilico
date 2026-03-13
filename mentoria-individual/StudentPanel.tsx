@@ -145,23 +145,12 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
   const toggleTaskStatus = async (taskId: string, status: boolean) => {
     if (!plan) return;
     
-    let task: MentorshipTask | undefined;
-    let sourceList: MentorshipTask[] = [];
-    let targetList: MentorshipTask[] = [];
+    const task = plan.tasks.find(t => t.id === taskId);
+    if (!task) return;
 
-    if (status) {
-        // Moving from tasks to completedTasks
-        task = plan.tasks.find(t => t.id === taskId);
-        if (!task) return;
-        sourceList = plan.tasks.filter(t => t.id !== taskId);
-        targetList = [...(plan.completedTasks || []), { ...task, isCompleted: true }];
-    } else {
-        // Moving from completedTasks to tasks
-        task = plan.completedTasks?.find(t => t.id === taskId);
-        if (!task) return;
-        sourceList = plan.completedTasks?.filter(t => t.id !== taskId) || [];
-        targetList = [...plan.tasks, { ...task, isCompleted: false }];
-    }
+    const updatedTasks = plan.tasks.map(t => 
+        t.id === taskId ? { ...t, isCompleted: status } : t
+    );
 
     const xpAmount = calculateXP(task.type);
     let newXp = plan.xp || 0;
@@ -172,7 +161,7 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
         newXp = Math.max(0, newXp - xpAmount);
     }
 
-    const updatedPlan = { ...plan, tasks: status ? sourceList : targetList, completedTasks: status ? targetList : sourceList, xp: newXp };
+    const updatedPlan = { ...plan, tasks: updatedTasks, xp: newXp };
     setPlan(updatedPlan);
     try {
         await MentorshipStorage.savePlan(updatedPlan);
@@ -291,7 +280,7 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
           };
       });
 
-      const updatedPlan = { ...plan, tasks: updatedTasks, completedTasks: [], xp: 0 };
+      const updatedPlan = { ...plan, tasks: updatedTasks, xp: 0 };
       
       setPlan(updatedPlan);
       try {
@@ -391,14 +380,14 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
       if (!taskToComplete || !plan) return;
 
       let updatedTasks = [...plan.tasks];
-      let updatedCompletedTasks = [...(plan.completedTasks || [])];
       
       const xpAmount = calculateXP(taskToComplete.type);
       const newXp = (plan.xp || 0) + xpAmount;
 
-      // 1. Marca a tarefa original como concluída e move para completedTasks
-      updatedTasks = updatedTasks.filter(t => t.id !== taskToComplete.id);
-      updatedCompletedTasks.push({ ...taskToComplete, isCompleted: true });
+      // 1. Marca a tarefa original como concluída
+      updatedTasks = updatedTasks.map(t => 
+          t.id === taskToComplete.id ? { ...t, isCompleted: true } : t
+      );
 
       // 2. Se precisa de mais tempo, reprograma e empurra as próximas
       if (needsMoreTime) {
@@ -494,7 +483,7 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
           showAlert("Reforço Aprovado", `Ciente, soldado! Conteúdo reprogramado para ${continuationDayName} (${formattedDate}). As missões seguintes de ${taskToComplete.subject} foram adiadas.`);
       }
 
-      const updatedPlan = { ...plan, tasks: updatedTasks, completedTasks: updatedCompletedTasks, xp: newXp };
+      const updatedPlan = { ...plan, tasks: updatedTasks, xp: newXp };
       setPlan(updatedPlan);
       try {
         await MentorshipStorage.savePlan(updatedPlan);
@@ -571,7 +560,7 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
       return false;
   });
   
-  const completedCount = (plan.completedTasks || []).filter(t => t.date === isoDate).length;
+  const completedCount = (plan.tasks || []).filter(t => t.date === isoDate && t.isCompleted).length;
   const totalCount = todaysTasks.length + completedCount;
   const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
   
