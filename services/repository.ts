@@ -1,6 +1,7 @@
 
 import { supabase } from './supabase';
 import { User, Material, Simulado, Edital, Plan } from '../types';
+import { StudyPlan } from '../mentoria-individual/types';
 
 // Helper to handle the "localStorage-like" behavior using Supabase 'user_progress' table
 // key: 'stats', 'revisions', 'simulado_results', etc.
@@ -113,6 +114,34 @@ export const globalRepo = {
     },
     deleteEdital: async (id: string): Promise<void> => {
         await supabase.from('editais').delete().eq('id', id);
+    },
+
+    // STUDY PLANS
+    getStudyPlans: async (): Promise<StudyPlan[]> => {
+        const { data, error } = await supabase.from('app_config').select('value').eq('key', 'study_plans_list').single();
+        if (error || !data) return [];
+        return data.value as StudyPlan[];
+    },
+    saveStudyPlan: async (plan: StudyPlan): Promise<void> => {
+        const { data, error } = await supabase.from('app_config').select('value').eq('key', 'study_plans_list').single();
+        let plans: StudyPlan[] = [];
+        if (!error && data && data.value) {
+            plans = data.value as StudyPlan[];
+        }
+        const index = plans.findIndex(p => p.id === plan.id);
+        if (index >= 0) {
+            plans[index] = plan;
+        } else {
+            plans.push(plan);
+        }
+        await supabase.from('app_config').upsert({ key: 'study_plans_list', value: plans });
+    },
+    deleteStudyPlan: async (id: string): Promise<void> => {
+        const { data, error } = await supabase.from('app_config').select('value').eq('key', 'study_plans_list').single();
+        if (error || !data || !data.value) return;
+        let plans = data.value as StudyPlan[];
+        plans = plans.filter(p => p.id !== id);
+        await supabase.from('app_config').upsert({ key: 'study_plans_list', value: plans });
     },
 
     // GLOBAL CONFIG / SYSTEM MESSAGE

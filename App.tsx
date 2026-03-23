@@ -95,6 +95,9 @@ const getSubjectIcon = (subjectName: any, className: string = "", size: number =
     if (s.includes('informática') || s.includes('computador') || s.includes('t.i')) return <Cpu className={className} size={size} />;
     if (s.includes('português') || s.includes('língua') || s.includes('literatura')) return <Book className={className} size={size} />;
     if (s.includes('redação') || s.includes('escrita')) return <PenTool className={className} size={size} />;
+    if (s.includes('história')) return <History className={className} size={size} />;
+    if (s.includes('geografia')) return <Map className={className} size={size} />;
+    if (s.includes('atualidades')) return <Megaphone className={className} size={size} />;
     if (s.includes('simulado')) return <FileText className={className} size={size} />;
     return <Folder className={className} size={size} />;
 };
@@ -1251,6 +1254,29 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
 
             // User Specific
             const loadedSubjects = await userProgressRepo.get(userId, 'subjects', getStorage('subjects', [])); 
+            
+            // Ensure new subjects are added to existing users
+            const newSubjectsToAdd = [
+                { id: '13', name: 'História', totalHoursStudied: 0 },
+                { id: '14', name: 'Geografia', totalHoursStudied: 0 },
+                { id: '15', name: 'Atualidades', totalHoursStudied: 0 },
+                { id: '16', name: 'Direito Penal Militar', totalHoursStudied: 0 }
+            ];
+            
+            let updatedLoadedSubjects = [...loadedSubjects];
+            let subjectsChanged = false;
+            
+            newSubjectsToAdd.forEach(newSub => {
+                if (!updatedLoadedSubjects.find(s => s.name === newSub.name)) {
+                    updatedLoadedSubjects.push(newSub);
+                    subjectsChanged = true;
+                }
+            });
+            
+            if (subjectsChanged) {
+                await userProgressRepo.set(userId, 'subjects', updatedLoadedSubjects);
+            }
+
             const loadedSchedule = await userProgressRepo.get(userId, 'schedule', getStorage('schedule', []));
             const loadedGoals = await userProgressRepo.get(userId, 'daily_goals', []);
             const loadedStats = await userProgressRepo.get(userId, 'stats', { total: 0, correct: 0, incorrect: 0, history: [] });
@@ -1259,7 +1285,7 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
             const loadedSessions = await userProgressRepo.get(userId, 'study_sessions', []);
             const loadedEditalProg = await userProgressRepo.get(userId, 'edital_progress', []);
 
-            setSubjects(loadedSubjects);
+            setSubjects(updatedLoadedSubjects);
             if (!loadedSchedule || loadedSchedule.length === 0) {
                 const defaultSchedule = INITIAL_SCHEDULE_DAYS.map(day => ({ day, subjects: [] }));
                 setSchedule(defaultSchedule);

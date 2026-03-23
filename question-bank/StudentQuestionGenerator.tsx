@@ -16,6 +16,8 @@ export const StudentQuestionGenerator = ({ onQuestionsGenerated }: Props) => {
   const [difficulty, setDifficulty] = useState<Difficulty>('MEDIUM');
   const [discipline, setDiscipline] = useState('');
   const [subject, setSubject] = useState('');
+  const [role, setRole] = useState('Geral');
+  const [organ, setOrgan] = useState('Inédita');
   const [count, setCount] = useState(5);
   const [loading, setLoading] = useState(false);
 
@@ -36,6 +38,8 @@ export const StudentQuestionGenerator = ({ onQuestionsGenerated }: Props) => {
 
       const prompt = `Crie ${count} questões inéditas para concurso público.
 Banca: ${board}
+Órgão: ${organ}
+Cargo: ${role}
 Matéria: ${discipline}
 Assunto: ${subject}
 Dificuldade: ${difficulty === 'EASY' ? 'Fácil' : difficulty === 'MEDIUM' ? 'Média' : 'Difícil'}
@@ -87,8 +91,8 @@ Retorne um array JSON de objetos com as seguintes chaves:
           subject,
           difficulty,
           year: new Date().getFullYear(),
-          organ: 'Inédita',
-          role: 'Geral',
+          organ,
+          role,
         });
       }
       
@@ -115,6 +119,26 @@ Retorne um array JSON de objetos com as seguintes chaves:
             value={board} 
             onChange={e => setBoard(e.target.value)} 
             placeholder="Ex: Cebraspe, FCC, FGV" 
+            className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-white outline-none focus:border-red-600" 
+          />
+        </div>
+        
+        <div>
+          <label className="text-xs font-bold text-zinc-500 uppercase mb-1 block">Órgão</label>
+          <input 
+            value={organ} 
+            onChange={e => setOrgan(e.target.value)} 
+            placeholder="Ex: Polícia Federal, TJ-SP" 
+            className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-white outline-none focus:border-red-600" 
+          />
+        </div>
+
+        <div>
+          <label className="text-xs font-bold text-zinc-500 uppercase mb-1 block">Cargo</label>
+          <input 
+            value={role} 
+            onChange={e => setRole(e.target.value)} 
+            placeholder="Ex: Agente, Escrivão, Analista" 
             className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-white outline-none focus:border-red-600" 
           />
         </div>

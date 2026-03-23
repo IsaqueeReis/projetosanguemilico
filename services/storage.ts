@@ -14,6 +14,10 @@ const INITIAL_SUBJECTS: Subject[] = [
   { id: '10', name: 'Redação', totalHoursStudied: 0 },
   { id: '11', name: 'Resolução de Questões', totalHoursStudied: 0 },
   { id: '12', name: 'Simulado', totalHoursStudied: 0 },
+  { id: '13', name: 'História', totalHoursStudied: 0 },
+  { id: '14', name: 'Geografia', totalHoursStudied: 0 },
+  { id: '15', name: 'Atualidades', totalHoursStudied: 0 },
+  { id: '16', name: 'Direito Penal Militar', totalHoursStudied: 0 },
 ];
 
 const INITIAL_SCHEDULE: ScheduleItem[] = [

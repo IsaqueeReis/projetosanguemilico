@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { MentorshipStorage } from './storage';
 import { MentorshipPlan, MentorshipTask, TASK_TYPES, DAYS_OF_WEEK } from './types';
-import { Check, X, Clock, AlertTriangle, Shield, RefreshCw, Calendar, ArrowLeft, ArrowRight, FastForward, Trash2, ShieldAlert, ShieldCheck, Star, Award, Medal, Crown, ChevronUp, ChevronsUp, Hexagon, Circle, Sun } from 'lucide-react';
+import { Check, X, Clock, AlertTriangle, Shield, RefreshCw, Calendar, ArrowLeft, ArrowRight, FastForward, Trash2, ShieldAlert, ShieldCheck, Star, Award, Medal, Crown, ChevronUp, ChevronsUp, Hexagon, Circle, Sun, LayoutDashboard, Target, BookOpen, Dumbbell, Settings, LogOut, Bell, User, Megaphone, Quote, Box } from 'lucide-react';
 import { Dialog, DialogType } from '../components/ui/Dialog';
 
 const RankBadge = ({ rankName, colorClass }: { rankName: string, colorClass: string }) => {
@@ -56,6 +56,10 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
 
   // Estado para o Modal de Adiantar Metas
   const [showAdvanceModal, setShowAdvanceModal] = useState(false);
+
+  // Estado para Metas Atrasadas
+  const [showLateTasksConfig, setShowLateTasksConfig] = useState(false);
+  const [extraTasksPerDay, setExtraTasksPerDay] = useState(1);
 
   const [weekOffset, setWeekOffset] = useState(0);
 
@@ -117,17 +121,68 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
       if (task.isCompleted) {
           toggleTaskStatus(task.id, false);
       } else {
-          // Verifica se há missões anteriores não concluídas
-          const taskIndex = plan.tasks.findIndex(t => t.id === task.id);
-          const hasPendingPreviousTasks = plan.tasks.some((t, index) => 
-              index < taskIndex && !t.isCompleted
-          );
-          if (hasPendingPreviousTasks) {
-              showAlert("Atenção", "Você não pode concluir esta missão sem antes ter concluído todas as missões anteriores da fila.");
+          // Regra: Só pode cumprir metas de HOJE ou ATRASADAS
+          if (task.date && task.date > isoDate) {
+              showAlert("Acesso Negado", "Esta missão está agendada para o futuro. Você deve adiantar seus assuntos se quiser chegar nela hoje.");
               return;
           }
           setTaskToComplete(task);
       }
+  };
+
+  const handleLateTaskSpread = async () => {
+    if (!plan) return;
+    
+    const lateTasks = plan.tasks.filter(t => t.date && t.date < isoDate && !t.isCompleted);
+    if (lateTasks.length === 0) return;
+
+    const updatedTasks = [...plan.tasks];
+    
+    // Distribuir metas atrasadas nos próximos dias
+    let currentOffset = 0;
+    let tasksAddedToday = 0;
+
+    lateTasks.forEach((task) => {
+        if (tasksAddedToday >= extraTasksPerDay) {
+            currentOffset++;
+            tasksAddedToday = 0;
+        }
+
+        const targetDate = new Date();
+        targetDate.setDate(targetDate.getDate() + currentOffset);
+        
+        const y = targetDate.getFullYear();
+        const m = String(targetDate.getMonth() + 1).padStart(2, '0');
+        const d = String(targetDate.getDate()).padStart(2, '0');
+        const newDateStr = `${y}-${m}-${d}`;
+        
+        const dayIndex = targetDate.getDay() === 0 ? 6 : targetDate.getDay() - 1;
+        const newDayName = DAYS_OF_WEEK[dayIndex < 0 ? 6 : dayIndex];
+
+        // Atualizar a tarefa na lista
+        const taskIdx = updatedTasks.findIndex(t => t.id === task.id);
+        if (taskIdx !== -1) {
+            updatedTasks[taskIdx] = {
+                ...task,
+                date: newDateStr,
+                dayOfWeek: newDayName,
+                description: `${task.description} [Atrasada]`
+            };
+        }
+        
+        tasksAddedToday++;
+    });
+
+    const updatedPlan = { ...plan, tasks: updatedTasks };
+    setPlan(updatedPlan);
+    try {
+        await MentorshipStorage.savePlan(updatedPlan);
+        showAlert("Reforço Integrado", `As ${lateTasks.length} metas atrasadas foram redistribuídas (${extraTasksPerDay} por dia) no seu cronograma.`);
+        setShowLateTasksConfig(false);
+    } catch (err) {
+        console.error("Erro ao salvar redistribuição:", err);
+        setPlan(plan);
+    }
   };
 
   const calculateXP = (type: string) => {
@@ -206,15 +261,19 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
     // 3. Encontrar próximas datas válidas (Next 7 study days)
     let availableDates: string[] = [];
     let dateCursor = new Date(todayDate);
-    dateCursor.setDate(dateCursor.getDate() + 1); // Começa amanhã
+    dateCursor.setHours(12, 0, 0, 0);
+    // Começa a partir de hoje
 
     while (availableDates.length < 7) { 
         const dayName = DAYS_OF_WEEK[dateCursor.getDay() === 0 ? 6 : dateCursor.getDay() - 1];
         if (validDays.includes(dayName)) {
-            availableDates.push(dateCursor.toLocaleDateString('pt-BR').split('/').reverse().join('-'));
+            const yStr = dateCursor.getFullYear();
+            const mStr = String(dateCursor.getMonth() + 1).padStart(2, '0');
+            const dStr = String(dateCursor.getDate()).padStart(2, '0');
+            availableDates.push(`${yStr}-${mStr}-${dStr}`);
         }
         dateCursor.setDate(dateCursor.getDate() + 1);
-        if (availableDates.length >= 30) break; // Safety
+        if (dateCursor.getTime() > todayDate.getTime() + 30 * 24 * 60 * 60 * 1000) break; // Safety 30 days
     }
 
     if (availableDates.length === 0) {
@@ -262,36 +321,144 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
   const confirmResetPlan = async () => {
       if (!plan) return;
       
-      const updatedTasks = plan.tasks.map(t => {
-          const targetDate = t.originalDate || t.date;
-          let newDayName = t.dayOfWeek;
-          if (targetDate) {
-              const [y, m, d] = targetDate.split('-').map(Number);
-              const dateObj = new Date(y, m - 1, d);
-              const newDayIndex = dateObj.getDay() === 0 ? 6 : dateObj.getDay() - 1;
-              newDayName = DAYS_OF_WEEK[newDayIndex];
-          }
-          return {
+      // 1. Identificar tarefas de origem
+      const sourceTasks = plan.originalTasks && plan.originalTasks.length > 0 
+          ? plan.originalTasks 
+          : plan.tasks;
+
+      if (sourceTasks.length === 0) return showAlert("Erro", "Não há missões para resetar.");
+
+      // 2. Agrupar tarefas por Matéria/Tipo para redistribuição inteligente
+      const tasksBySubject: Record<string, MentorshipTask[]> = {};
+      sourceTasks.forEach(t => {
+          // Chave de agendamento: Prioriza tipos especiais, senão usa a matéria
+          let key = t.subject;
+          const lowerSubject = t.subject.toLowerCase();
+
+          if (t.type === 'SIMULADO') key = 'Simulado';
+          else if (t.type === 'REVISAO') key = 'Revisão';
+          else if (t.type === 'LEI_SECA') key = 'Lei Seca';
+          else if (t.type === 'META_EXTRA') key = 'Meta Extra';
+          else if (lowerSubject.includes('redação') || lowerSubject.includes('redacao')) key = 'Redação';
+          
+          if (!tasksBySubject[key]) tasksBySubject[key] = [];
+          tasksBySubject[key].push({
               ...t,
               isCompleted: false,
-              date: targetDate,
-              dayOfWeek: newDayName,
-              description: t.description?.replace(/ \[Replanejado\]| \[Adiantado\]/g, '') || ''
-          };
+              description: t.description?.replace(/ \[Replanejado\]| \[Adiantado\]| \[Atrasada\]/g, '') || ''
+          });
       });
 
-      const updatedPlan = { ...plan, tasks: updatedTasks, xp: 0 };
+      // 3. Preparar a redistribuição respeitando o cronograma semanal (Subject-Aware)
+      const updatedTasks: MentorshipTask[] = [];
+      let dateCursor = new Date();
+      dateCursor.setHours(12, 0, 0, 0);
+
+      const schedule = plan.weeklySchedule || {};
+      const hasSchedule = Object.values(schedule).some(s => Array.isArray(s) && (s as string[]).length > 0);
+
+      if (!hasSchedule) {
+          // Fallback: Se não houver cronograma, distribui sequencialmente nos dias de estudo originais
+          sourceTasks.forEach((t, idx) => {
+              const d = new Date(dateCursor);
+              d.setDate(d.getDate() + idx);
+              const dayIndex = d.getDay() === 0 ? 6 : d.getDay() - 1;
+              const yStr = d.getFullYear();
+              const mStr = String(d.getMonth() + 1).padStart(2, '0');
+              const dStr = String(d.getDate()).padStart(2, '0');
+              
+              updatedTasks.push({
+                  ...t,
+                  isCompleted: false,
+                  date: `${yStr}-${mStr}-${dStr}`,
+                  dayOfWeek: DAYS_OF_WEEK[dayIndex],
+                  description: t.description?.replace(/ \[Replanejado\]| \[Adiantado\]| \[Atrasada\]/g, '') || ''
+              });
+          });
+      } else {
+          let totalTasks = sourceTasks.length;
+          let assignedCount = 0;
+          let safetyCounter = 0;
+          
+          // Cópia para não mutar o original durante o shift()
+          const workingQueues = { ...tasksBySubject };
+
+          while (assignedCount < totalTasks && safetyCounter < 1000) {
+              const dayIndex = dateCursor.getDay() === 0 ? 6 : dateCursor.getDay() - 1;
+              const dayName = DAYS_OF_WEEK[dayIndex];
+              
+              let subjectsForToday: string[] = [];
+
+              if (dayName === 'Domingo') {
+                  // Domingo é exclusivo para Simulado, Redação e tarefas diárias
+                  subjectsForToday = ['Simulado', 'Redação', 'Lei Seca', 'Meta Extra', 'Revisão'];
+              } else {
+                  // Dias normais: Cronograma + tarefas diárias
+                  subjectsForToday = [...(schedule[dayName] || []), 'Lei Seca', 'Meta Extra', 'Revisão'];
+              }
+
+              if (subjectsForToday.length > 0) {
+                  // Usar um Set para evitar duplicatas se o usuário colocou 'Lei Seca' no schedule manual
+                  const uniqueSubjects = Array.from(new Set(subjectsForToday));
+
+                  uniqueSubjects.forEach(subjKey => {
+                      if (workingQueues[subjKey] && workingQueues[subjKey].length > 0) {
+                          const t = workingQueues[subjKey].shift()!;
+                          const yStr = dateCursor.getFullYear();
+                          const mStr = String(dateCursor.getMonth() + 1).padStart(2, '0');
+                          const dStr = String(dateCursor.getDate()).padStart(2, '0');
+                          
+                          t.date = `${yStr}-${mStr}-${dStr}`;
+                          t.dayOfWeek = dayName;
+                          updatedTasks.push(t);
+                          assignedCount++;
+                      }
+                  });
+              }
+              dateCursor.setDate(dateCursor.getDate() + 1);
+              safetyCounter++;
+          }
+
+          // Se sobrarem tarefas (matérias não agendadas), anexa ao final
+          Object.keys(workingQueues).forEach(subjKey => {
+              const list = workingQueues[subjKey];
+              list.forEach(t => {
+                  const dayIndex = dateCursor.getDay() === 0 ? 6 : dateCursor.getDay() - 1;
+                  const yStr = dateCursor.getFullYear();
+                  const mStr = String(dateCursor.getMonth() + 1).padStart(2, '0');
+                  const dStr = String(dateCursor.getDate()).padStart(2, '0');
+                  
+                  t.date = `${yStr}-${mStr}-${dStr}`;
+                  t.dayOfWeek = DAYS_OF_WEEK[dayIndex];
+                  updatedTasks.push(t);
+                  dateCursor.setDate(dateCursor.getDate() + 1);
+              });
+          });
+      }
+
+      const yStr = new Date().getFullYear();
+      const mStr = String(new Date().getMonth() + 1).padStart(2, '0');
+      const dStr = String(new Date().getDate()).padStart(2, '0');
+      const newStartDateStr = `${yStr}-${mStr}-${dStr}`;
+
+      const updatedPlan = { 
+          ...plan, 
+          tasks: updatedTasks, 
+          originalTasks: sourceTasks, 
+          xp: 0, 
+          startDate: newStartDateStr 
+      };
       
       setPlan(updatedPlan);
       try {
         await MentorshipStorage.savePlan(updatedPlan);
+        showAlert("Sucesso", "Plano reiniciado com sucesso! O Dia 1 é HOJE e o cronograma foi recalculado.");
       } catch (err) {
         console.error("Erro ao salvar reset:", err);
         showAlert("Erro de Conexão", "Não foi possível salvar o reset. Verifique sua conexão.");
         setPlan(plan);
       }
       setShowResetModal(false);
-      showAlert("Sucesso", "Plano reiniciado com sucesso! Bons estudos, soldado.");
   };
 
   const handleDeletePlan = () => {
@@ -555,8 +722,14 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
   }
 
   const todaysMessage = plan.messages?.find(m => m.date === isoDate);
+  
   const todaysTasks = (plan.tasks || []).filter(t => {
       if (t.date) return t.date === isoDate && !t.isCompleted;
+      return false;
+  });
+
+  const lateTasks = (plan.tasks || []).filter(t => {
+      if (t.date) return t.date < isoDate && !t.isCompleted;
       return false;
   });
   
@@ -575,57 +748,55 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
   };
 
   return (
-    <div className="bg-[#09090b] text-zinc-200 min-h-screen font-sans relative">
+    <div className="min-h-screen bg-[#09090b] text-zinc-300 font-sans selection:bg-red-900/30 pb-20">
       <div className="max-w-5xl mx-auto p-4 md:p-8 space-y-8">
         
-        <header className="flex flex-col md:flex-row justify-between items-end border-b border-zinc-800 pb-6 gap-4">
+        {/* HEADER */}
+        <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-zinc-900/40 p-6 rounded-2xl border border-zinc-800/50 backdrop-blur-sm">
           <div>
-            <div className="flex items-center gap-2 mb-2">
-               <span className="w-3 h-3 bg-green-500 rounded-full animate-pulse shadow-[0_0_10px_#22c55e]"></span>
-               <span className="text-xs font-bold text-green-500 uppercase tracking-widest">Canal Seguro Ativo</span>
-            </div>
-            <h1 className="text-3xl font-black text-white uppercase tracking-tighter">
-              Central de <span className="text-red-600">Comando</span>
+            <h1 className="text-2xl md:text-3xl font-black text-white uppercase tracking-tighter flex items-center gap-3">
+              <Shield className="text-red-600" size={28} />
+              Painel do Aluno
             </h1>
-            <p className="text-zinc-500 mt-1">Sua rota diária rumo à aprovação.</p>
+            <p className="text-zinc-500 text-sm mt-1 font-medium">Bem-vindo de volta, recruta.</p>
           </div>
-          <div className="text-right">
-             <div className="text-4xl font-black text-white font-mono">{new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}</div>
-             <div className="text-red-600 font-bold uppercase text-sm">{currentDayName}</div>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <div className="text-xs font-bold text-zinc-500 uppercase tracking-widest">{currentDayName}</div>
+              <div className="text-sm font-bold text-white">{todayDate.toLocaleDateString('pt-BR')}</div>
+            </div>
+            <div className="w-10 h-10 bg-zinc-800 rounded-xl flex items-center justify-center border border-zinc-700 text-zinc-400">
+              <Calendar size={20} />
+            </div>
           </div>
         </header>
 
-        {/* XP & Ranking System */}
-        <section className="bg-zinc-900/50 border border-zinc-800 rounded-2xl p-6 relative overflow-hidden">
-            <div className="absolute -right-10 -top-10 opacity-5 pointer-events-none">
-                <RankIcon iconName={rankInfo.currentRank.icon} className={`w-64 h-64 ${rankInfo.currentRank.color}`} />
-            </div>
-            <div className="flex justify-between items-end mb-4 relative z-10">
-                <div className="flex items-center gap-4">
-                    <div className={`w-16 h-16 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center shadow-xl ${rankInfo.currentRank.color}`}>
-                        <RankIcon iconName={rankInfo.currentRank.icon} className="w-8 h-8" />
-                    </div>
-                    <div>
-                        <div className="text-xs text-zinc-500 uppercase tracking-widest mb-1 font-bold">Patente Atual</div>
-                        <div className={`text-3xl font-black uppercase tracking-tight ${rankInfo.currentRank.color}`}>
-                            {rankInfo.currentRank.name}
-                        </div>
-                    </div>
-                </div>
-                <div className="text-right">
-                    <div className="text-xs text-zinc-500 uppercase tracking-widest mb-1 font-bold">Experiência</div>
-                    <div className="text-2xl font-mono font-bold text-white">
-                        {plan.xp || 0} <span className="text-zinc-500 text-sm">XP</span>
-                    </div>
-                </div>
+        {/* CENTRAL DE COMANDO */}
+        <section className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 md:p-8 relative overflow-hidden">
+            <div className="absolute -right-10 -bottom-10 opacity-5">
+                <RankBadge rankName={rankInfo.currentRank.name} colorClass="text-white w-64 h-64" />
             </div>
             
-            <div className="h-4 bg-zinc-950 rounded-full overflow-hidden relative border border-zinc-800 shadow-inner">
-                <div 
-                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-red-600 to-red-400 transition-all duration-1000 relative overflow-hidden"
-                    style={{ width: `${rankInfo.progress}%` }}
-                >
-                    <div className="absolute inset-0 bg-white/20 w-full animate-[shimmer_2s_infinite] -skew-x-12" style={{ backgroundImage: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent)' }} />
+            <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center gap-6 mb-8">
+                <RankBadge rankName={rankInfo.currentRank.name} colorClass={rankInfo.currentRank.color} />
+                <div>
+                    <h2 className="text-xs font-bold text-zinc-500 uppercase tracking-[0.2em] mb-1">Patente Atual</h2>
+                    <div className={`text-3xl font-black uppercase tracking-tighter ${rankInfo.currentRank.color}`}>
+                        {rankInfo.currentRank.name}
+                    </div>
+                </div>
+            </div>
+
+            <div className="relative z-10">
+                <div className="flex justify-between text-xs font-bold uppercase tracking-widest mb-2">
+                    <span className="text-white">XP Total: {plan.xp || 0}</span>
+                    <span className="text-zinc-500">{rankInfo.nextRank ? `${rankInfo.nextRank.min} XP` : 'MÁXIMO'}</span>
+                </div>
+                <div className="h-3 bg-zinc-950 rounded-full overflow-hidden border border-zinc-800">
+                    <div 
+                        className="h-full bg-red-600 transition-all duration-1000 ease-out"
+                        style={{ width: `${rankInfo.progress}%` }}
+                    />
                 </div>
             </div>
             
@@ -636,7 +807,6 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
                 </div>
             )}
         </section>
-
         <section className="bg-gradient-to-r from-zinc-900 to-zinc-950 border border-zinc-800 rounded-2xl p-6 md:p-8 relative overflow-hidden shadow-lg">
            <div className="absolute top-0 right-0 p-4 opacity-10">
               <svg width="100" height="100" viewBox="0 0 24 24" fill="currentColor"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
@@ -661,7 +831,44 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
         </section>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <section className="lg:col-span-2 space-y-4">
+          <section className="lg:col-span-2 space-y-6">
+             {/* QUADRO DE METAS ATRASADAS */}
+             {lateTasks.length > 0 && (
+                 <div className="bg-red-900/10 border border-red-900/30 rounded-2xl p-6 animate-pulse-subtle">
+                     <div className="flex justify-between items-center mb-4">
+                         <h3 className="text-red-500 font-bold uppercase text-sm flex items-center gap-2">
+                             <ShieldAlert size={18} />
+                             Missões em Atraso ({lateTasks.length})
+                         </h3>
+                         <div className="flex gap-2">
+                             <button 
+                                onClick={() => setShowLateTasksConfig(true)}
+                                className="text-[10px] bg-red-600 hover:bg-red-700 text-white font-bold py-1 px-3 rounded uppercase transition-colors"
+                             >
+                                Incluir no Cronograma
+                             </button>
+                         </div>
+                     </div>
+                     <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                         {lateTasks.map(task => (
+                             <div key={task.id} className="bg-zinc-950/50 border border-red-900/20 p-3 rounded-lg flex justify-between items-center group">
+                                 <div>
+                                     <p className="text-white text-sm font-bold">{task.subject}</p>
+                                     <p className="text-[10px] text-zinc-500 uppercase">{task.date?.split('-').reverse().join('/')} • {TASK_TYPES.find(tt => tt.type === task.type)?.label}</p>
+                                 </div>
+                                 <button 
+                                    onClick={() => handleTaskClick(task)}
+                                    className="bg-zinc-900 hover:bg-red-600 text-zinc-400 hover:text-white p-2 rounded transition-all text-[10px] font-bold uppercase"
+                                 >
+                                    Cumprir Agora
+                                 </button>
+                             </div>
+                         ))}
+                     </div>
+                     <p className="text-[10px] text-zinc-500 mt-4 italic">"O soldado que não domina seu tempo é dominado pelo inimigo."</p>
+                 </div>
+             )}
+
              <div className="flex justify-between items-center mb-2">
                <h3 className="text-white font-bold uppercase text-lg flex items-center gap-2">
                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-600"><path d="M9 11l3 3L22 4"></path><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
@@ -798,7 +1005,13 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
                                             return (
                                                 <div 
                                                     key={t.id} 
-                                                    onClick={() => showAlert("Detalhes da Missão", `Assunto: ${t.subject}\nData: ${dateStr.split('-').reverse().join('/')}\nTipo: ${tType?.label}`)}
+                                                    onClick={() => {
+                                                        if (t.date && t.date <= isoDate) {
+                                                            handleTaskClick(t);
+                                                        } else {
+                                                            showAlert("Missão Futura", `Assunto: ${t.subject}\nData: ${dateStr.split('-').reverse().join('/')}\n\nEsta missão só poderá ser cumprida quando chegar o dia ou se você adiantar seus assuntos.`);
+                                                        }
+                                                    }}
                                                     className={`text-xs p-2 rounded border cursor-pointer hover:border-red-500 transition-colors ${t.isCompleted ? 'bg-zinc-900 border-zinc-800 text-zinc-600 line-through' : 'bg-zinc-950 border-zinc-800 text-zinc-300'}`}
                                                 >
                                                     <div className="flex items-center justify-between mb-1">
@@ -856,6 +1069,48 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
           </section>
         </div>
       </div>
+
+      {/* MODAL CONFIGURAR METAS ATRASADAS */}
+      {showLateTasksConfig && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-md w-full shadow-2xl">
+                  <h3 className="text-xl font-black text-white uppercase tracking-tight mb-4">Integrar Atrasos</h3>
+                  <p className="text-zinc-400 text-sm mb-6">
+                      Escolha quantas missões extras você deseja adicionar ao seu cronograma diário até zerar os atrasos.
+                  </p>
+                  
+                  <div className="space-y-4 mb-8">
+                      <label className="block text-xs font-bold text-zinc-500 uppercase">Missões extras por dia</label>
+                      <div className="flex items-center gap-4">
+                          {[1, 2, 3, 4].map(num => (
+                              <button 
+                                key={num}
+                                onClick={() => setExtraTasksPerDay(num)}
+                                className={`flex-1 py-3 rounded-xl font-bold transition-all ${extraTasksPerDay === num ? 'bg-red-600 text-white shadow-lg' : 'bg-zinc-800 text-zinc-500 hover:text-white'}`}
+                              >
+                                +{num}
+                              </button>
+                          ))}
+                      </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                      <button 
+                          onClick={() => setShowLateTasksConfig(false)}
+                          className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 rounded-xl transition-colors"
+                      >
+                          CANCELAR
+                      </button>
+                      <button 
+                          onClick={handleLateTaskSpread}
+                          className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl transition-colors shadow-lg"
+                      >
+                          CONFIRMAR
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
 
       {/* MODAL DE CONCLUSÃO TÁTICA */}
       {taskToComplete && (

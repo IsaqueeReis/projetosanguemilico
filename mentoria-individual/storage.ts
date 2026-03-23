@@ -30,6 +30,7 @@ export const MentorshipStorage = {
         isActive: data.is_active,
         startDate: data.start_date,
         tasks: data.tasks || [],
+        originalTasks: extra.originalTasks || undefined,
         xp: extra.xp || 0,
         messages: data.messages || [],
         weeklySchedule: extra.weeklySchedule || undefined
@@ -65,7 +66,8 @@ export const MentorshipStorage = {
         key: 'mentorship_extra',
         value: {
           xp: plan.xp || 0,
-          weeklySchedule: plan.weeklySchedule
+          weeklySchedule: plan.weeklySchedule,
+          originalTasks: plan.originalTasks
         },
         updated_at: new Date().toISOString()
       }, { onConflict: 'user_id, key' });

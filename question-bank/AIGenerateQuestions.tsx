@@ -7,19 +7,49 @@ import { QBQuestion, QuestionType, Difficulty } from './types';
 const API_KEY = process.env.API_KEY || '';
 
 export const AIGenerateQuestions = () => {
-  const [topic, setTopic] = useState('');
+  const [board, setBoard] = useState('');
+  const [type, setType] = useState<QuestionType>('ABCDE');
   const [difficulty, setDifficulty] = useState<Difficulty>('MEDIUM');
+  const [discipline, setDiscipline] = useState('');
+  const [subject, setSubject] = useState('');
+  const [role, setRole] = useState('Geral');
+  const [organ, setOrgan] = useState('Inédita');
   const [count, setCount] = useState(1);
   const [loading, setLoading] = useState(false);
   const [generatedQuestions, setGeneratedQuestions] = useState<any[]>([]);
 
   const handleGenerate = async () => {
+    if (!board || !discipline || !subject) {
+      alert('Por favor, preencha Banca, Matéria e Assunto.');
+      return;
+    }
+
     setLoading(true);
     try {
       const ai = new GoogleGenAI({ apiKey: API_KEY });
+      
+      let typeDescription = '';
+      if (type === 'CERTO_ERRADO') typeDescription = 'Certo ou Errado (2 alternativas)';
+      else if (type === 'ABCD') typeDescription = 'Múltipla escolha com 4 alternativas (A, B, C, D)';
+      else typeDescription = 'Múltipla escolha com 5 alternativas (A, B, C, D, E)';
+
+      const prompt = `Crie ${count} questões inéditas para concurso público.
+Banca: ${board}
+Órgão: ${organ}
+Cargo: ${role}
+Matéria: ${discipline}
+Assunto: ${subject}
+Dificuldade: ${difficulty === 'EASY' ? 'Fácil' : difficulty === 'MEDIUM' ? 'Média' : 'Difícil'}
+Modalidade: ${typeDescription}
+
+Retorne um array JSON de objetos com as seguintes chaves:
+- statement: O enunciado da questão.
+- alternatives: Array de objetos com { label (A, B, C, etc ou C, E), text (texto da alternativa), is_correct (boolean) }. Apenas UMA alternativa deve ser true.
+- justification: A justificativa detalhada da resposta correta.`;
+
       const response = await ai.models.generateContent({
         model: 'gemini-3.1-flash-lite-preview',
-        contents: `Generate ${count} multiple choice questions about ${topic} with difficulty ${difficulty}. Return as JSON array of objects with keys: statement, alternatives [{label, text, is_correct}], justification.`,
+        contents: prompt,
         config: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -60,12 +90,12 @@ export const AIGenerateQuestions = () => {
     for (const q of generatedQuestions) {
       await QuestionBankService.createQuestion({
         ...q,
-        type: 'ABCDE',
-        board: 'IA',
-        organ: 'IA',
-        role: 'IA',
-        discipline: topic,
-        subject: topic,
+        type,
+        board,
+        organ,
+        role,
+        discipline,
+        subject,
         difficulty,
         year: new Date().getFullYear(),
       });
@@ -80,12 +110,21 @@ export const AIGenerateQuestions = () => {
         <Zap className="text-yellow-500" size={16}/> Geração de Questões via IA
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-        <input value={topic} onChange={e => setTopic(e.target.value)} placeholder="Assunto" className="bg-zinc-950 border border-zinc-800 rounded p-2 text-white" />
+        <input value={board} onChange={e => setBoard(e.target.value)} placeholder="Banca" className="bg-zinc-950 border border-zinc-800 rounded p-2 text-white" />
+        <select value={type} onChange={e => setType(e.target.value as QuestionType)} className="bg-zinc-950 border border-zinc-800 rounded p-2 text-white">
+            <option value="CERTO_ERRADO">Certo / Errado</option>
+            <option value="ABCD">Múltipla Escolha (4 Alt)</option>
+            <option value="ABCDE">Múltipla Escolha (5 Alt)</option>
+        </select>
         <select value={difficulty} onChange={e => setDifficulty(e.target.value as Difficulty)} className="bg-zinc-950 border border-zinc-800 rounded p-2 text-white">
             <option value="EASY">Fácil</option>
             <option value="MEDIUM">Médio</option>
             <option value="HARD">Difícil</option>
         </select>
+        <input value={discipline} onChange={e => setDiscipline(e.target.value)} placeholder="Matéria" className="bg-zinc-950 border border-zinc-800 rounded p-2 text-white" />
+        <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Assunto" className="bg-zinc-950 border border-zinc-800 rounded p-2 text-white" />
+        <input value={organ} onChange={e => setOrgan(e.target.value)} placeholder="Órgão" className="bg-zinc-950 border border-zinc-800 rounded p-2 text-white" />
+        <input value={role} onChange={e => setRole(e.target.value)} placeholder="Cargo" className="bg-zinc-950 border border-zinc-800 rounded p-2 text-white" />
         <input type="number" value={count} onChange={e => setCount(Number(e.target.value))} className="bg-zinc-950 border border-zinc-800 rounded p-2 text-white" />
       </div>
       <button onClick={handleGenerate} disabled={loading} className="bg-blue-600 text-white px-6 py-2 rounded font-bold hover:bg-blue-700 disabled:opacity-50">

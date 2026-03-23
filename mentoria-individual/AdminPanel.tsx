@@ -2,10 +2,10 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { MentorshipStorage } from './storage';
 import { globalRepo } from '../services/repository'; 
-import { MentorshipPlan, MentorshipTask, DAYS_OF_WEEK, TASK_TYPES, TaskType, AIPlanItem, DetectedSubject, SubjectConfig, ExtraGoalConfig } from './types';
+import { MentorshipPlan, MentorshipTask, DAYS_OF_WEEK, TASK_TYPES, TaskType, AIPlanItem, DetectedSubject, SubjectConfig, ExtraGoalConfig, StudyPlan } from './types';
 import { User, Plan, UserRole, Edital } from '../types';
 import { GoogleGenAI } from "@google/genai";
-import { Brain, Calendar, Check, Save, Sparkles, Trash2, List, FileText, ChevronRight, Activity, Zap, Scale, BarChart2, Plus, X, AlertTriangle } from 'lucide-react';
+import { Brain, Calendar, Check, Save, Sparkles, Trash2, List, FileText, ChevronRight, Activity, Zap, Scale, BarChart2, Plus, X, AlertTriangle, Edit2 } from 'lucide-react';
 import { Dialog, DialogType } from '../components/ui/Dialog';
 
 const API_KEY = process.env.API_KEY || ''; 
@@ -33,7 +33,7 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
 
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [currentPlan, setCurrentPlan] = useState<MentorshipPlan | null>(null);
-  const [activeMode, setActiveMode] = useState<'DAILY' | 'PLANNER'>('DAILY');
+  const [activeMode, setActiveMode] = useState<'DAILY' | 'PLANNER' | 'FULL_EDIT'>('DAILY');
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
   
@@ -44,12 +44,19 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
   const [taskDesc, setTaskDesc] = useState('');
   const [taskWeeks, setTaskWeeks] = useState(1);
 
+  // Estados Tarefa Específica
+  const [specificDate, setSpecificDate] = useState('');
+  const [specificType, setSpecificType] = useState<TaskType>('AULA');
+  const [specificSubject, setSpecificSubject] = useState('');
+  const [specificDesc, setSpecificDesc] = useState('');
+
   // Estados Edição de Tarefa
   const [editingTask, setEditingTask] = useState<MentorshipTask | null>(null);
   const [editTaskForm, setEditTaskForm] = useState({ subject: '', description: '', dayOfWeek: '', type: '' as TaskType });
 
   // --- ESTADOS DO GERADOR IA 2.0 ---
   const [plannerStep, setPlannerStep] = useState<'INPUT' | 'CONFIG' | 'PREVIEW'>('INPUT');
+  const [plannerInputMode, setPlannerInputMode] = useState<'NEW' | 'SAVED'>('NEW');
   const [rawEdital, setRawEdital] = useState('');
   const [detectedStructure, setDetectedStructure] = useState<DetectedSubject[]>([]);
   const [subjectConfigs, setSubjectConfigs] = useState<Record<string, SubjectConfig>>({});
@@ -78,8 +85,20 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
   const [showSaveEditalModal, setShowSaveEditalModal] = useState(false);
   const [editalTitle, setEditalTitle] = useState('Edital Verticalizado PM');
 
+  // Estado Modal Salvar Plano de Estudo
+  const [showSavePlanModal, setShowSavePlanModal] = useState(false);
+  const [planTitle, setPlanTitle] = useState('Plano de Estudo PM');
+
+  // Estado Modal Editar Matéria
+  const [editingSubjectIndex, setEditingSubjectIndex] = useState<number | null>(null);
+  const [editingSubjectName, setEditingSubjectName] = useState("");
+  const [editingSubjectTopics, setEditingSubjectTopics] = useState("");
+
   // Estado Modal Implantar Plano
   const [showDeployModal, setShowDeployModal] = useState(false);
+
+  // Estado para planos salvos
+  const [savedStudyPlans, setSavedStudyPlans] = useState<StudyPlan[]>([]);
 
   // --- SISTEMA DE DIÁLOGO CUSTOMIZADO ---
   const [dialog, setDialog] = useState<{
@@ -131,7 +150,19 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
             if (isMounted) setCurrentPlan(null);
         }
     };
+    
+    const loadSavedPlans = async () => {
+        try {
+            const plans = await globalRepo.getStudyPlans();
+            if (isMounted) setSavedStudyPlans(plans);
+        } catch (err) {
+            console.error("Erro ao carregar planos salvos:", err);
+        }
+    };
+
     loadPlan();
+    loadSavedPlans();
+    
     return () => { isMounted = false; };
   }, [selectedStudentId, premiumStudents]);
 
@@ -243,6 +274,31 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
     setCurrentPlan(updatedPlan);
     setNewMessage('');
     showAlert('Sucesso', 'Ordem enviada ao aluno!');
+  };
+
+  const handleAddSpecificTask = async () => {
+    if (!currentPlan || !specificDate || !specificSubject) return showAlert("Erro", "Preencha data e matéria.");
+    
+    const newTask: MentorshipTask = {
+      id: Date.now().toString(),
+      dayOfWeek: 'Outro', // Ou algo que indique data específica
+      type: specificType,
+      subject: specificSubject,
+      description: specificDesc,
+      isCompleted: false,
+      date: specificDate
+    };
+
+    const updatedPlan = { ...currentPlan, tasks: [...currentPlan.tasks, newTask] };
+    try {
+        await MentorshipStorage.savePlan(updatedPlan);
+    } catch (err) {
+        console.error("Erro ao salvar tarefa:", err);
+        showAlert("Erro de Conexão", "Não foi possível salvar a tarefa.");
+        return;
+    }
+    setCurrentPlan(updatedPlan);
+    setSpecificDate(''); setSpecificSubject(''); setSpecificDesc('');
   };
 
   // Passo 1: Analisar Texto e Detectar Estrutura
@@ -449,6 +505,29 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
                       type: "REVISAO",
                       instructions: "Escrever redação sobre tema atual ou previsto no edital."
                   });
+                  
+                  // Adicionar Lei Seca e Metas Extras no Domingo também se habilitado
+                  if (includeLeiSeca) {
+                      finalSchedule.push({
+                          dayOffset,
+                          subject: "LEGISLAÇÃO",
+                          topic: "Leitura de Lei Seca",
+                          type: "LEI_SECA",
+                          instructions: "Leitura ativa da legislação prevista no edital (30min)."
+                      });
+                  }
+                  
+                  extraGoals.forEach(goal => {
+                      if (goal.frequency === 'DAILY' || (goal.selectedDays && goal.selectedDays.includes('Domingo'))) {
+                          finalSchedule.push({
+                              dayOffset,
+                              subject: goal.title,
+                              topic: goal.description || "Meta Extra Diária",
+                              type: "META_EXTRA",
+                              instructions: goal.description || "Cumprir meta extra estabelecida."
+                          });
+                      }
+                  });
               } else {
                   const rawAllowedSubjects = weeklySchedule[dayName] || [];
                   const allowedSubjectsNormalized = rawAllowedSubjects.map(normalize);
@@ -462,6 +541,19 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
                           instructions: "Leitura ativa da legislação prevista no edital (30min)."
                       });
                   }
+
+                  // Adicionar Metas Extras
+                  extraGoals.forEach(goal => {
+                      if (goal.frequency === 'DAILY' || (goal.selectedDays && goal.selectedDays.includes(dayName))) {
+                          finalSchedule.push({
+                              dayOffset,
+                              subject: goal.title,
+                              topic: goal.description || "Meta Extra Diária",
+                              type: "META_EXTRA",
+                              instructions: goal.description || "Cumprir meta extra estabelecida."
+                          });
+                      }
+                  });
 
                   // For each allowed subject, pop ONE task
                   allowedSubjectsNormalized.forEach(normSubj => {
@@ -515,109 +607,119 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
   const handleResetPlan = async () => {
     if (!currentPlan) return;
     
-    showConfirm("Reiniciar Ciclo", "ATENÇÃO: Isso irá apagar todo o progresso do aluno e reiniciar o cronograma a partir de HOJE. Deseja continuar?", async () => {
+    showConfirm("Reiniciar Ciclo", "ATENÇÃO: Isso irá apagar todo o progresso do aluno e reiniciar o cronograma a partir de HOJE. O cronograma será recalculado com base nos dias de estudo definidos. Deseja continuar?", async () => {
         try {
-            const today = new Date();
-            const todayStr = getLocalDateStr(today);
-
-            // Map to track task counts per date to prevent overloading
-            const dateCounts: Record<string, number> = {};
-            const limitPerDay = subjectsPerDay || 2;
-
-            // Helper to find next specific weekday
-            const getNextDayOfWeek = (startDate: Date, dayName: string) => {
-                const days = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-                const targetIndex = days.indexOf(dayName);
-                if (targetIndex === -1) return startDate;
-
-                let d = new Date(startDate);
-                while (d.getDay() !== targetIndex) {
-                    d.setDate(d.getDate() + 1);
-                }
-                return d;
-            };
-
-            const sourceTasks = currentPlan.originalTasks && currentPlan.originalTasks.length > 0 
+            // 1. Identificar tarefas de origem
+            const sourceTasks = (currentPlan.originalTasks && currentPlan.originalTasks.length > 0)
                 ? currentPlan.originalTasks 
                 : currentPlan.tasks;
 
-            // Ordenar tarefas: com data primeiro (preserva ordem), depois sem data
-            const sortedTasks = [...sourceTasks].sort((a, b) => {
-                if (a.date && b.date) return a.date.localeCompare(b.date);
-                if (a.date) return -1;
-                if (b.date) return 1;
-                return 0;
-            });
+            if (sourceTasks.length === 0) return showAlert("Erro", "Não há missões para resetar.");
 
-            // Encontrar a data mais antiga (início original real das tarefas)
-            const dates = sortedTasks.map(t => t.date).filter(d => d);
-            let originalStart: Date;
-
-            if (dates.length > 0) {
-                // Parse manual para evitar problemas de timezone
-                const [y, m, d] = dates[0]!.split('-').map(Number);
-                originalStart = new Date(y, m - 1, d);
-            } else if (currentPlan.startDate) {
-                const [y, m, d] = currentPlan.startDate.split('-').map(Number);
-                originalStart = new Date(y, m - 1, d);
-            } else {
-                originalStart = new Date(today);
-            }
-
-            // Fallback de segurança
-            if (isNaN(originalStart.getTime())) {
-                console.warn("Data de início original inválida detectada. Usando HOJE como referência.");
-                originalStart = new Date(today);
-            }
-
-            const newTasks = sortedTasks.map(t => {
-                let taskDate = new Date(today);
+            // 2. Agrupar tarefas por Matéria/Tipo para redistribuição inteligente
+            const tasksBySubject: Record<string, MentorshipTask[]> = {};
+            sourceTasks.forEach(t => {
+                // Chave de agendamento: Prioriza tipos especiais, senão usa a matéria
+                let key = t.subject;
+                const lowerSubject = t.subject.toLowerCase();
                 
-                if (t.date) {
-                    // Lógica existente para tarefas com data
-                    const [y, m, d] = t.date.split('-').map(Number);
-                    const oldDate = new Date(y, m - 1, d);
-                    
-                    if (!isNaN(oldDate.getTime())) {
-                        const diffTime = oldDate.getTime() - originalStart.getTime(); 
-                        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
-                        taskDate.setDate(today.getDate() + diffDays);
-                    } else {
-                        // Se a data da tarefa for inválida, trata como sem data
-                        taskDate = getNextDayOfWeek(today, t.dayOfWeek);
-                    }
-                } else {
-                    // NOVA Lógica para Tarefas Sem Data (Timeless)
-                    // Encontrar primeiro slot disponível para este dia da semana
-                    let candidateDate = getNextDayOfWeek(today, t.dayOfWeek);
-                    let candidateStr = getLocalDateStr(candidateDate);
-                    
-                    // Enquanto o balde estiver cheio, move para a próxima semana
-                    while ((dateCounts[candidateStr] || 0) >= limitPerDay) {
-                        candidateDate.setDate(candidateDate.getDate() + 7);
-                        candidateStr = getLocalDateStr(candidateDate);
-                    }
-                    taskDate = candidateDate;
-                }
+                if (t.type === 'SIMULADO') key = 'Simulado';
+                else if (t.type === 'REVISAO') key = 'Revisão';
+                else if (t.type === 'LEI_SECA') key = 'Lei Seca';
+                else if (t.type === 'META_EXTRA') key = 'Meta Extra';
+                else if (lowerSubject.includes('redação') || lowerSubject.includes('redacao')) key = 'Redação';
                 
-                const dateStr = getLocalDateStr(taskDate);
-                dateCounts[dateStr] = (dateCounts[dateStr] || 0) + 1;
-
-                const dayIndex = taskDate.getDay() === 0 ? 6 : taskDate.getDay() - 1;
-                const dayName = DAYS_OF_WEEK[dayIndex < 0 ? 6 : dayIndex];
-
-                return {
+                if (!tasksBySubject[key]) tasksBySubject[key] = [];
+                tasksBySubject[key].push({
                     ...t,
                     isCompleted: false,
-                    date: dateStr,
-                    dayOfWeek: dayName
-                };
+                    description: t.description?.replace(/ \[Replanejado\]| \[Adiantado\]| \[Atrasada\]/g, '') || ''
+                });
             });
+
+            // 3. Preparar a redistribuição respeitando o cronograma semanal (Subject-Aware)
+            const updatedTasks: MentorshipTask[] = [];
+            let dateCursor = new Date();
+            dateCursor.setHours(12, 0, 0, 0);
+
+            const schedule = currentPlan.weeklySchedule || {};
+            const hasSchedule = Object.values(schedule).some(s => Array.isArray(s) && (s as string[]).length > 0);
+
+            if (!hasSchedule) {
+                // Fallback: Se não houver cronograma, distribui sequencialmente nos dias de estudo originais
+                sourceTasks.forEach((t, idx) => {
+                    const d = new Date(dateCursor);
+                    d.setDate(d.getDate() + idx);
+                    const dayIndex = d.getDay() === 0 ? 6 : d.getDay() - 1;
+                    updatedTasks.push({
+                        ...t,
+                        isCompleted: false,
+                        date: getLocalDateStr(d),
+                        dayOfWeek: DAYS_OF_WEEK[dayIndex],
+                        description: t.description?.replace(/ \[Replanejado\]| \[Adiantado\]| \[Atrasada\]/g, '') || ''
+                    });
+                });
+            } else {
+                let totalTasks = sourceTasks.length;
+                let assignedCount = 0;
+                let safetyCounter = 0;
+                
+                // Cópia para não mutar o original durante o shift()
+                const workingQueues = { ...tasksBySubject };
+
+                while (assignedCount < totalTasks && safetyCounter < 1000) {
+                    const dayIndex = dateCursor.getDay() === 0 ? 6 : dateCursor.getDay() - 1;
+                    const dayName = DAYS_OF_WEEK[dayIndex];
+                    
+                    let subjectsForToday: string[] = [];
+
+                    if (dayName === 'Domingo') {
+                        // Domingo é exclusivo para Simulado, Redação e tarefas diárias
+                        subjectsForToday = ['Simulado', 'Redação', 'Lei Seca', 'Meta Extra', 'Revisão'];
+                    } else {
+                        // Dias normais: Cronograma + tarefas diárias
+                        subjectsForToday = [...(schedule[dayName] || []), 'Lei Seca', 'Meta Extra', 'Revisão'];
+                    }
+
+                    if (subjectsForToday.length > 0) {
+                        // Usar um Set para evitar duplicatas se o usuário colocou 'Lei Seca' no schedule manual
+                        const uniqueSubjects = Array.from(new Set(subjectsForToday));
+                        
+                        uniqueSubjects.forEach(subjKey => {
+                            if (workingQueues[subjKey] && workingQueues[subjKey].length > 0) {
+                                const t = workingQueues[subjKey].shift()!;
+                                t.date = getLocalDateStr(dateCursor);
+                                t.dayOfWeek = dayName;
+                                updatedTasks.push(t);
+                                assignedCount++;
+                            }
+                        });
+                    }
+                    dateCursor.setDate(dateCursor.getDate() + 1);
+                    safetyCounter++;
+                }
+
+                // Se sobrarem tarefas (matérias não agendadas), anexa ao final
+                Object.keys(workingQueues).forEach(subjKey => {
+                    const list = workingQueues[subjKey];
+                    list.forEach(t => {
+                        const dayIndex = dateCursor.getDay() === 0 ? 6 : dateCursor.getDay() - 1;
+                        t.date = getLocalDateStr(dateCursor);
+                        t.dayOfWeek = DAYS_OF_WEEK[dayIndex];
+                        updatedTasks.push(t);
+                        dateCursor.setDate(dateCursor.getDate() + 1);
+                    });
+                });
+            }
+
+            const today = new Date();
+            const todayStr = getLocalDateStr(today);
 
             const updatedPlan = {
                 ...currentPlan,
                 startDate: todayStr,
-                tasks: newTasks,
+                tasks: updatedTasks,
+                originalTasks: sourceTasks,
                 xp: 0
             };
 
@@ -736,6 +838,58 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
   };
 
   // Aplicação Final ao Aluno
+  const handleUpdateFullPlanTask = (taskId: string, field: keyof MentorshipTask, value: any) => {
+    if (!currentPlan) return;
+    
+    const updatedTasks = currentPlan.tasks.map(t => {
+        if (t.id === taskId) {
+            const updated = { ...t, [field]: value };
+            
+            // Se mudar a data, atualiza o dia da semana automaticamente
+            if (field === 'date' && value) {
+                const [y, m, d] = value.split('-').map(Number);
+                const dateObj = new Date(y, m - 1, d);
+                if (!isNaN(dateObj.getTime())) {
+                    const dayIndex = dateObj.getDay() === 0 ? 6 : dateObj.getDay() - 1;
+                    updated.dayOfWeek = DAYS_OF_WEEK[dayIndex < 0 ? 6 : dayIndex];
+                }
+            }
+            
+            return updated;
+        }
+        return t;
+    });
+    
+    setCurrentPlan({ ...currentPlan, tasks: updatedTasks });
+  };
+
+  const saveFullPlanChanges = async () => {
+    if (!currentPlan) return;
+    setLoading(true);
+    try {
+        // Ao salvar alterações manuais, atualizamos também o originalTasks para que o novo layout seja o "template"
+        const updatedPlan = {
+            ...currentPlan,
+            originalTasks: currentPlan.tasks
+        };
+        await MentorshipStorage.savePlan(updatedPlan);
+        setCurrentPlan(updatedPlan);
+        showAlert("Sucesso", "Alterações no plano salvas com sucesso!");
+    } catch (err) {
+        console.error("Erro ao salvar plano completo:", err);
+        showAlert("Erro", "Não foi possível salvar as alterações.");
+    } finally {
+        setLoading(true);
+        // Recarregar plano para garantir consistência
+        const student = premiumStudents.find(s => s.id === selectedStudentId);
+        if (student) {
+            const plan = await MentorshipStorage.initPlan(student.id, student.name);
+            setCurrentPlan(plan);
+        }
+        setLoading(false);
+    }
+  };
+
   const handleApplyFinalPlan = () => {
       if (!currentPlan) return;
       setShowDeployModal(true);
@@ -804,6 +958,7 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
               ...currentPlan,
               tasks: newTasks,
               originalTasks: newTasks,
+              weeklySchedule: weeklySchedule, // Salva o cronograma semanal para resets futuros
               xp: currentPlan.xp || 0
           };
 
@@ -838,6 +993,7 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
         <div className="flex items-center gap-4">
             <div className="flex bg-zinc-900 p-1 rounded-lg border border-zinc-800">
                 <button onClick={() => setActiveMode('DAILY')} className={`px-4 py-2 rounded text-xs font-bold uppercase tracking-wide flex items-center gap-2 transition ${activeMode === 'DAILY' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}><List size={14}/> Diário</button>
+                <button onClick={() => setActiveMode('FULL_EDIT')} className={`px-4 py-2 rounded text-xs font-bold uppercase tracking-wide flex items-center gap-2 transition ${activeMode === 'FULL_EDIT' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}><Edit2 size={14}/> Editar Plano</button>
                 <button onClick={() => setActiveMode('PLANNER')} className={`px-4 py-2 rounded text-xs font-bold uppercase tracking-wide flex items-center gap-2 transition ${activeMode === 'PLANNER' ? 'bg-red-900/30 text-red-400 border border-red-900/50' : 'text-zinc-500 hover:text-zinc-300'}`}><Brain size={14}/> Gerador IA 2.0</button>
             </div>
             <div className="flex items-center gap-2 bg-zinc-900 p-2 rounded-lg border border-zinc-800"><span className="text-xs font-bold text-zinc-400 uppercase mr-2">Operador:</span><select value={selectedStudentId} onChange={(e) => setSelectedStudentId(e.target.value)} className="bg-zinc-800 text-white text-sm p-2 rounded border border-zinc-700 outline-none focus:border-red-600">{premiumStudents.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}</select></div>
@@ -853,25 +1009,96 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
               {/* STEP 1: INPUT */}
               {plannerStep === 'INPUT' && (
                   <div className="bg-zinc-900/50 p-8 rounded-xl border border-zinc-800 max-w-3xl mx-auto">
-                      <h3 className="text-white font-bold mb-4 uppercase text-sm tracking-wide flex items-center gap-2">
-                          <span className="bg-red-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">1</span>
-                          Inteligência do Edital
-                      </h3>
-                      <p className="text-zinc-400 text-xs mb-4">Cole abaixo o conteúdo programático bruto. A IA irá estruturar as matérias.</p>
-                      <textarea 
-                          value={rawEdital} 
-                          onChange={e => setRawEdital(e.target.value)} 
-                          placeholder="Cole aqui o texto do edital..." 
-                          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-4 text-white h-64 outline-none focus:border-red-600 font-mono text-xs mb-4"
-                      />
-                      <button 
-                          onClick={handleAnalyzeEdital} 
-                          disabled={isAnalyzing}
-                          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 transition disabled:opacity-50"
-                      >
-                          {isAnalyzing ? <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div> : <Brain size={18}/>}
-                          {isAnalyzing ? "Processando Inteligência..." : "Analisar e Estruturar"}
-                      </button>
+                      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                          <h3 className="text-white font-bold uppercase text-sm tracking-wide flex items-center gap-2">
+                              <span className="bg-red-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">1</span>
+                              Inteligência do Edital
+                          </h3>
+                          <div className="flex bg-zinc-950 p-1 rounded-lg border border-zinc-800">
+                              <button 
+                                  onClick={() => setPlannerInputMode('NEW')}
+                                  className={`px-3 py-1.5 rounded text-[10px] font-bold uppercase transition ${plannerInputMode === 'NEW' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
+                              >
+                                  Novo Edital
+                              </button>
+                              <button 
+                                  onClick={() => setPlannerInputMode('SAVED')}
+                                  className={`px-3 py-1.5 rounded text-[10px] font-bold uppercase transition ${plannerInputMode === 'SAVED' ? 'bg-zinc-800 text-white shadow' : 'text-zinc-500 hover:text-zinc-300'}`}
+                              >
+                                  Modelos Salvos
+                              </button>
+                          </div>
+                      </div>
+
+                      {plannerInputMode === 'NEW' ? (
+                          <div className="animate-fade-in">
+                              <p className="text-zinc-400 text-xs mb-4">Cole abaixo o conteúdo programático bruto. A IA irá estruturar as matérias.</p>
+                              <textarea 
+                                  value={rawEdital} 
+                                  onChange={e => setRawEdital(e.target.value)} 
+                                  placeholder="Cole aqui o texto do edital..." 
+                                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-4 text-white h-64 outline-none focus:border-red-600 font-mono text-xs mb-4"
+                              />
+                              <button 
+                                  onClick={handleAnalyzeEdital} 
+                                  disabled={isAnalyzing}
+                                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 transition disabled:opacity-50"
+                              >
+                                  {isAnalyzing ? <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div> : <Brain size={18}/>}
+                                  {isAnalyzing ? "Processando Inteligência..." : "Analisar e Estruturar"}
+                              </button>
+                          </div>
+                      ) : (
+                          <div className="animate-fade-in space-y-3">
+                              {savedStudyPlans.length === 0 ? (
+                                  <div className="text-center py-12 border-2 border-dashed border-zinc-800 rounded-xl">
+                                      <p className="text-zinc-500 text-sm">Nenhum modelo de plano salvo encontrado.</p>
+                                  </div>
+                              ) : (
+                                  savedStudyPlans.map(plan => (
+                                      <div key={plan.id} className="flex items-center justify-between bg-zinc-950 p-4 rounded-xl border border-zinc-800 hover:border-zinc-700 transition-colors group">
+                                          <div>
+                                              <p className="text-sm text-white font-bold group-hover:text-red-500 transition-colors">{plan.title}</p>
+                                              <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mt-1">
+                                                  {new Date(plan.createdAt).toLocaleDateString()} • {plan.items.length} matérias
+                                              </p>
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                              <button 
+                                                  onClick={() => {
+                                                      setDetectedStructure(plan.items);
+                                                      setSubjectConfigs(plan.subjectConfigs || {});
+                                                      setWeeklySchedule(plan.weeklySchedule || {});
+                                                      setExtraGoals(plan.extraGoals || []);
+                                                      
+                                                      if (plan.generatedTasks && plan.generatedTasks.length > 0) {
+                                                          setGeneratedItems(plan.generatedTasks);
+                                                          setPlannerStep('PREVIEW');
+                                                      } else {
+                                                          setPlannerStep('CONFIG');
+                                                      }
+                                                  }}
+                                                  className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all active:scale-95 flex items-center gap-2"
+                                              >
+                                                  <Zap size={14} className="text-yellow-500" /> Carregar
+                                              </button>
+                                              <button 
+                                                  onClick={async () => {
+                                                      if (window.confirm('Tem certeza que deseja excluir este modelo?')) {
+                                                          await globalRepo.deleteStudyPlan(plan.id);
+                                                          setSavedStudyPlans(prev => prev.filter(p => p.id !== plan.id));
+                                                      }
+                                                  }}
+                                                  className="bg-zinc-900 hover:bg-red-900/40 text-zinc-500 hover:text-red-500 p-2 rounded-lg transition-all"
+                                              >
+                                                  <Trash2 size={16} />
+                                              </button>
+                                          </div>
+                                      </div>
+                                  ))
+                              )}
+                          </div>
+                      )}
                   </div>
               )}
 
@@ -889,6 +1116,9 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
                                   <button onClick={handleExportToGlobalEdital} className="text-xs bg-zinc-800 hover:bg-zinc-700 text-white px-3 py-1 rounded border border-zinc-700 flex items-center gap-1">
                                       <Save size={12}/> Salvar como Edital Global
                                   </button>
+                                  <button onClick={() => setShowSavePlanModal(true)} className="text-xs bg-green-800 hover:bg-green-700 text-white px-3 py-1 rounded border border-green-700 flex items-center gap-1">
+                                      <Save size={12}/> Salvar Plano de Estudo
+                                  </button>
                               </div>
                               
                               <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
@@ -896,7 +1126,36 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
                                       <div key={idx} className="bg-zinc-950 p-4 rounded-lg border border-zinc-800">
                                           <div className="flex justify-between items-start mb-3">
                                               <span className="text-white font-bold">{subj.name}</span>
-                                              <span className="text-xs text-zinc-500">{subj.topics.length} tópicos</span>
+                                              <div className="flex items-center gap-2">
+                                                  <span className="text-xs text-zinc-500">{subj.topics.length} tópicos</span>
+                                                  <button
+                                                      onClick={() => {
+                                                          setEditingSubjectIndex(idx);
+                                                          setEditingSubjectName(subj.name);
+                                                          setEditingSubjectTopics(subj.topics.join('\n'));
+                                                      }}
+                                                      className="text-zinc-400 hover:text-blue-500 transition-colors"
+                                                      title="Editar Matéria"
+                                                  >
+                                                      <Edit2 size={14} />
+                                                  </button>
+                                                  <button
+                                                      onClick={() => {
+                                                          if (confirm(`Tem certeza que deseja remover a matéria ${subj.name}?`)) {
+                                                              setDetectedStructure(prev => prev.filter((_, i) => i !== idx));
+                                                              setSubjectConfigs(prev => {
+                                                                  const newConfigs = { ...prev };
+                                                                  delete newConfigs[subj.name];
+                                                                  return newConfigs;
+                                                              });
+                                                          }
+                                                      }}
+                                                      className="text-zinc-400 hover:text-red-500 transition-colors"
+                                                      title="Remover Matéria"
+                                                  >
+                                                      <Trash2 size={14} />
+                                                  </button>
+                                              </div>
                                           </div>
                                           
                                           {/* CONFIGS DA MATÉRIA */}
@@ -933,6 +1192,16 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
                                       </div>
                                   ))}
                               </div>
+                              <button
+                                  onClick={() => {
+                                      setEditingSubjectIndex(-1);
+                                      setEditingSubjectName("");
+                                      setEditingSubjectTopics("");
+                                  }}
+                                  className="w-full mt-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold py-3 rounded-xl transition-colors flex items-center justify-center gap-2 text-sm"
+                              >
+                                  <Plus size={16} /> Adicionar Matéria
+                              </button>
                           </div>
                       </div>
 
@@ -1139,17 +1408,122 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
                                   </div>
                               )}
 
-                              <button 
-                                  onClick={handleApplyFinalPlan}
-                                  className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 transition shadow-lg"
-                              >
-                                  <Save size={18}/> Implantar Plano
-                              </button>
+                              <div className="flex gap-2">
+                                  <button 
+                                      onClick={() => setShowSavePlanModal(true)}
+                                      className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition shadow-lg border border-zinc-700"
+                                  >
+                                      <Save size={18}/> Salvar como Modelo
+                                  </button>
+                                  <button 
+                                      onClick={handleApplyFinalPlan}
+                                      className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 transition shadow-lg"
+                                  >
+                                      <Zap size={18}/> Implantar Plano ao Aluno
+                                  </button>
+                              </div>
                               <button onClick={() => setPlannerStep('CONFIG')} className="w-full text-zinc-500 text-xs mt-2 underline text-center">Voltar Config</button>
                           </div>
                       </div>
                   </div>
               )}
+          </div>
+      )}
+
+      {!loading && currentPlan && activeMode === 'FULL_EDIT' && (
+          <div className="space-y-6 animate-fade-in">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
+                  <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                      <div>
+                          <h3 className="text-xl font-black text-white uppercase tracking-tight">Edição Direta do Plano</h3>
+                          <p className="text-zinc-500 text-sm">Altere matérias, datas e tipos de missão manualmente.</p>
+                      </div>
+                      <button 
+                          onClick={saveFullPlanChanges}
+                          className="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-xl flex items-center gap-2 transition-all shadow-lg w-full md:w-auto justify-center"
+                      >
+                          <Save size={18} /> SALVAR ALTERAÇÕES
+                      </button>
+                  </div>
+
+                  <div className="overflow-x-auto custom-scrollbar">
+                      <table className="w-full text-left border-collapse min-w-[800px]">
+                          <thead>
+                              <tr className="border-b border-zinc-800 text-[10px] uppercase font-bold text-zinc-500">
+                                  <th className="py-3 px-4">Data</th>
+                                  <th className="py-3 px-4">Dia</th>
+                                  <th className="py-3 px-4">Matéria</th>
+                                  <th className="py-3 px-4">Tipo</th>
+                                  <th className="py-3 px-4">Descrição</th>
+                                  <th className="py-3 px-4 text-center">Status</th>
+                                  <th className="py-3 px-4 text-center">Ações</th>
+                              </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-800/50">
+                              {[...currentPlan.tasks].sort((a, b) => (a.date || '').localeCompare(b.date || '')).map(task => (
+                                  <tr key={task.id} className="hover:bg-zinc-800/30 transition-colors group">
+                                      <td className="py-2 px-4">
+                                          <input 
+                                              type="date" 
+                                              value={task.date || ''} 
+                                              onChange={(e) => handleUpdateFullPlanTask(task.id, 'date', e.target.value)}
+                                              className="bg-zinc-950 border border-zinc-800 text-white text-xs p-1.5 rounded focus:border-red-600 outline-none"
+                                          />
+                                      </td>
+                                      <td className="py-2 px-4 text-[10px] text-zinc-400 font-mono uppercase">{task.dayOfWeek?.substring(0,3)}</td>
+                                      <td className="py-2 px-4">
+                                          <input 
+                                              type="text" 
+                                              value={task.subject} 
+                                              onChange={(e) => handleUpdateFullPlanTask(task.id, 'subject', e.target.value)}
+                                              className="bg-zinc-950 border border-zinc-800 text-white text-xs p-1.5 rounded w-full focus:border-red-600 outline-none"
+                                          />
+                                      </td>
+                                      <td className="py-2 px-4">
+                                          <select 
+                                              value={task.type} 
+                                              onChange={(e) => handleUpdateFullPlanTask(task.id, 'type', e.target.value)}
+                                              className="bg-zinc-950 border border-zinc-800 text-white text-xs p-1.5 rounded focus:border-red-600 outline-none w-full"
+                                          >
+                                              {TASK_TYPES.map(tt => (
+                                                  <option key={tt.type} value={tt.type}>{tt.label}</option>
+                                              ))}
+                                          </select>
+                                      </td>
+                                      <td className="py-2 px-4">
+                                          <input 
+                                              type="text" 
+                                              value={task.description || ''} 
+                                              onChange={(e) => handleUpdateFullPlanTask(task.id, 'description', e.target.value)}
+                                              className="bg-zinc-950 border border-zinc-800 text-white text-xs p-1.5 rounded w-full focus:border-red-600 outline-none"
+                                          />
+                                      </td>
+                                      <td className="py-2 px-4 text-center">
+                                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${task.isCompleted ? 'bg-green-900/30 text-green-500' : 'bg-zinc-800 text-zinc-500'}`}>
+                                              {task.isCompleted ? 'OK' : 'PEND'}
+                                          </span>
+                                      </td>
+                                      <td className="py-2 px-4 text-center">
+                                          <button 
+                                              onClick={() => handleDeleteTask(task.id)}
+                                              className="text-zinc-600 hover:text-red-500 p-1.5 transition-colors"
+                                              title="Excluir Missão"
+                                          >
+                                              <Trash2 size={14} />
+                                          </button>
+                                      </td>
+                                  </tr>
+                                ))}
+                          </tbody>
+                      </table>
+                  </div>
+                  
+                  {currentPlan.tasks.length === 0 && (
+                      <div className="py-20 text-center text-zinc-600 italic">
+                          Nenhuma missão encontrada para este plano.
+                      </div>
+                  )}
+              </div>
           </div>
       )}
 
@@ -1171,6 +1545,17 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
               <div><label className="text-xs text-zinc-500 font-bold uppercase">Detalhes (Opcional)</label><input type="text" value={taskDesc} onChange={e => setTaskDesc(e.target.value)} placeholder="Ex: Ler PDF pág. 10 a 30" className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-sm text-white mt-1" /></div>
               <div><label className="text-xs text-zinc-500 font-bold uppercase">Repetir por (Semanas)</label><input type="number" min="1" max="52" value={taskWeeks} onChange={e => setTaskWeeks(parseInt(e.target.value) || 1)} className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-sm text-white mt-1" /></div>
               <button onClick={handleAddTask} className="w-full bg-zinc-100 hover:bg-white text-black font-bold py-2 rounded-lg flex items-center justify-center gap-2 mt-2 transition-all"><Icon name="plus" /> Adicionar ao Plano</button>
+            </div>
+          </div>
+
+          <div className="bg-zinc-900/50 p-6 rounded-xl border border-zinc-800">
+            <h3 className="text-white font-bold mb-4 uppercase text-sm tracking-wide">Meta Específica (Data Única)</h3>
+            <div className="space-y-3">
+              <div><label className="text-xs text-zinc-500 font-bold uppercase">Data</label><input type="date" value={specificDate} onChange={e => setSpecificDate(e.target.value)} className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-sm text-white mt-1" /></div>
+              <div><label className="text-xs text-zinc-500 font-bold uppercase">Tipo</label><select value={specificType} onChange={e => setSpecificType(e.target.value as TaskType)} className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-sm text-white mt-1">{TASK_TYPES.map(t => <option key={t.type} value={t.type}>{t.label}</option>)}</select></div>
+              <div><label className="text-xs text-zinc-500 font-bold uppercase">Matéria / Tópico</label><input type="text" value={specificSubject} onChange={e => setSpecificSubject(e.target.value)} placeholder="Ex: Direito Penal - Art. 121" className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-sm text-white mt-1" /></div>
+              <div><label className="text-xs text-zinc-500 font-bold uppercase">Detalhes (Opcional)</label><input type="text" value={specificDesc} onChange={e => setSpecificDesc(e.target.value)} placeholder="Ex: Ler PDF pág. 10 a 30" className="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-sm text-white mt-1" /></div>
+              <button onClick={handleAddSpecificTask} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-lg flex items-center justify-center gap-2 mt-2 transition-all"><Icon name="plus" /> Adicionar Meta Única</button>
             </div>
           </div>
 
@@ -1256,6 +1641,131 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
                           className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl transition-colors shadow-lg"
                       >
                           SALVAR
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* MODAL SALVAR PLANO DE ESTUDO */}
+      {showSavePlanModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-md w-full shadow-2xl relative">
+                  <div className="text-center mb-6">
+                      <h3 className="text-xl font-black text-white uppercase tracking-tight mb-2">Salvar Plano de Estudo</h3>
+                      <p className="text-zinc-400 text-xs">Este plano ficará salvo para reutilização em outros alunos.</p>
+                  </div>
+                  
+                  <div className="space-y-4">
+                      <div>
+                          <label className="text-xs text-zinc-500 font-bold uppercase block mb-1">Nome do Plano</label>
+                          <input 
+                              type="text" 
+                              value={planTitle} 
+                              onChange={(e) => setPlanTitle(e.target.value)}
+                              className="w-full bg-zinc-950 border border-zinc-800 rounded p-3 text-white outline-none focus:border-green-600"
+                              placeholder="Ex: Plano PM-SP 2026"
+                              autoFocus
+                          />
+                      </div>
+
+                      <div className="flex gap-3 pt-2">
+                          <button 
+                              onClick={() => setShowSavePlanModal(false)}
+                              className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold py-3 rounded-xl transition-colors"
+                          >
+                              Cancelar
+                          </button>
+                          <button 
+                              onClick={async () => {
+                                  if (!planTitle.trim()) return showAlert("Atenção", "Digite um nome para o plano.");
+                                  try {
+                                      const newPlan: StudyPlan = {
+                                          id: `study-plan-${Date.now()}`,
+                                          title: planTitle,
+                                          items: detectedStructure,
+                                          generatedTasks: generatedItems,
+                                          weeklySchedule: weeklySchedule,
+                                          subjectConfigs: subjectConfigs,
+                                          extraGoals: extraGoals,
+                                          createdAt: new Date().toISOString()
+                                      };
+                                      await globalRepo.saveStudyPlan(newPlan);
+                                      setSavedStudyPlans(prev => [newPlan, ...prev]);
+                                      setShowSavePlanModal(false);
+                                      showAlert("Sucesso", "Plano de estudo salvo com sucesso!");
+                                  } catch (err) {
+                                      console.error(err);
+                                      showAlert("Erro", "Erro ao salvar plano de estudo.");
+                                  }
+                              }}
+                              className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-xl transition-transform active:scale-95 shadow-lg flex items-center justify-center gap-2"
+                          >
+                              <Save size={18} /> Salvar
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+      
+      {/* MODAL EDITAR MATÉRIA */}
+      {editingSubjectIndex !== null && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fade-in">
+              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-2xl w-full shadow-2xl relative">
+                  <h3 className="text-xl font-black text-white uppercase tracking-tight mb-4">
+                      {editingSubjectIndex === -1 ? "Adicionar Matéria" : "Editar Matéria"}
+                  </h3>
+                  
+                  <div className="space-y-4">
+                      <div>
+                          <label className="text-xs text-zinc-500 font-bold uppercase block mb-1">Nome da Matéria</label>
+                          <input 
+                              type="text" 
+                              value={editingSubjectName} 
+                              onChange={(e) => setEditingSubjectName(e.target.value)}
+                              className="w-full bg-zinc-950 border border-zinc-800 rounded p-3 text-white outline-none focus:border-blue-600"
+                              placeholder="Ex: Português"
+                          />
+                      </div>
+                      <div>
+                          <label className="text-xs text-zinc-500 font-bold uppercase block mb-1">Tópicos (um por linha)</label>
+                          <textarea 
+                              value={editingSubjectTopics} 
+                              onChange={(e) => setEditingSubjectTopics(e.target.value)}
+                              className="w-full bg-zinc-950 border border-zinc-800 rounded p-3 text-white outline-none focus:border-blue-600 min-h-[200px] custom-scrollbar"
+                              placeholder="Ex: Ortografia&#10;Sintaxe&#10;Morfologia"
+                          />
+                      </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-6">
+                      <button 
+                          onClick={() => setEditingSubjectIndex(null)}
+                          className="flex-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold py-3 rounded-xl transition-colors"
+                      >
+                          Cancelar
+                      </button>
+                      <button 
+                          onClick={() => {
+                              if (!editingSubjectName.trim()) return showAlert("Atenção", "O nome da matéria é obrigatório.");
+                              const topics = editingSubjectTopics.split('\n').map(t => t.trim()).filter(t => t);
+                              if (topics.length === 0) return showAlert("Atenção", "Adicione pelo menos um tópico.");
+                              
+                              setDetectedStructure(prev => {
+                                  const newStructure = [...prev];
+                                  if (editingSubjectIndex === -1) {
+                                      newStructure.push({ name: editingSubjectName, topics });
+                                  } else {
+                                      newStructure[editingSubjectIndex] = { name: editingSubjectName, topics };
+                                  }
+                                  return newStructure;
+                              });
+                              setEditingSubjectIndex(null);
+                          }}
+                          className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl transition-transform active:scale-95 shadow-lg"
+                      >
+                          Salvar
                       </button>
                   </div>
               </div>

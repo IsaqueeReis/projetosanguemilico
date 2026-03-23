@@ -72,3 +72,14 @@ export interface ExtraGoalConfig {
   frequency: 'DAILY' | 'CUSTOM';
   selectedDays: string[]; // ['Segunda', 'Quarta']
 }
+
+export interface StudyPlan {
+  id: string;
+  title: string;
+  items: DetectedSubject[];
+  generatedTasks?: AIPlanItem[];
+  weeklySchedule?: Record<string, string[]>;
+  subjectConfigs?: Record<string, SubjectConfig>;
+  extraGoals?: ExtraGoalConfig[];
+  createdAt: string;
+}
