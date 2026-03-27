@@ -25,9 +25,10 @@ interface AdminMentorshipPanelProps {
 }
 
 export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps) => {
-  const premiumPlan = useMemo(() => plans.find(p => p.name.trim().toUpperCase() === 'MENTORIA PREMIUM'), [plans]);
+  const premiumPlan = useMemo(() => plans?.find(p => p.name.trim().toUpperCase() === 'MENTORIA PREMIUM'), [plans]);
   
   const premiumStudents = useMemo(() => {
+      if (!users || !premiumPlan) return [];
       return users.filter(u => u.role === UserRole.STUDENT && premiumPlan && u.planId === premiumPlan.id);
   }, [users, premiumPlan]);
 
@@ -1060,13 +1061,13 @@ export const AdminMentorshipPanel = ({ users, plans }: AdminMentorshipPanelProps
                                           <div>
                                               <p className="text-sm text-white font-bold group-hover:text-red-500 transition-colors">{plan.title}</p>
                                               <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mt-1">
-                                                  {new Date(plan.createdAt).toLocaleDateString()} • {plan.items.length} matérias
+                                                  {plan.createdAt ? new Date(plan.createdAt).toLocaleDateString() : 'Data desconhecida'} • {plan.items?.length || 0} matérias
                                               </p>
                                           </div>
                                           <div className="flex items-center gap-2">
                                               <button 
                                                   onClick={() => {
-                                                      setDetectedStructure(plan.items);
+                                                      setDetectedStructure(plan.items || []);
                                                       setSubjectConfigs(plan.subjectConfigs || {});
                                                       setWeeklySchedule(plan.weeklySchedule || {});
                                                       setExtraGoals(plan.extraGoals || []);

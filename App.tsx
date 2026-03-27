@@ -1250,8 +1250,6 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
             setCommandMessage(msg); 
             setTutorialUrl(vid);
             
-            if (visibleEditais.length > 0) setActiveEditalId(visibleEditais[0].id);
-
             // User Specific
             const loadedSubjects = await userProgressRepo.get(userId, 'subjects', getStorage('subjects', [])); 
             
@@ -1260,7 +1258,8 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
                 { id: '13', name: 'História', totalHoursStudied: 0 },
                 { id: '14', name: 'Geografia', totalHoursStudied: 0 },
                 { id: '15', name: 'Atualidades', totalHoursStudied: 0 },
-                { id: '16', name: 'Direito Penal Militar', totalHoursStudied: 0 }
+                { id: '16', name: 'Direito Penal Militar', totalHoursStudied: 0 },
+                { id: '17', name: 'Processual Penal Militar', totalHoursStudied: 0 }
             ];
             
             let updatedLoadedSubjects = [...loadedSubjects];
@@ -1473,9 +1472,27 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
         const updated = [...revisions, ...newRevs]; setRevisions(updated); sync('revisions', updated);
         setNewRevSubject(''); setNewRevTopic(''); setNewRevDate(getLocalISODate());
     };
-    const completeRevision = (id: string) => {
+    const completeRevision = async (id: string) => {
         if (readOnly) return;
-        const updated = revisions.map(r => r.id === id ? { ...r, completed: true } : r); setRevisions(updated); sync('revisions', updated);
+        const revision = revisions.find(r => r.id === id);
+        if (!revision || revision.completed) return;
+
+        const updated = revisions.map(r => r.id === id ? { ...r, completed: true } : r); 
+        setRevisions(updated); 
+        sync('revisions', updated);
+        
+        if (hasMentorshipAccess) {
+            try {
+                const plan = await MentorshipStorage.getPlanByStudent(user.id);
+                if (plan) {
+                    const newXp = (plan.xp || 0) + 40; // 40 XP for REVISAO
+                    await MentorshipStorage.savePlan({ ...plan, xp: newXp });
+                    showNotification("Revisão Concluída", "+40 XP adicionado ao seu plano!", "success");
+                }
+            } catch (err) {
+                console.error("Erro ao adicionar XP da revisão:", err);
+            }
+        }
     };
     const deleteRevisionGroup = (groupId: string | undefined, id: string) => {
         if (readOnly) return;
@@ -1856,7 +1873,7 @@ const StudentDashboard = ({ user, onLogout, updateProfile, readOnly = false }: {
                     </div>
                 )}
                 {activeTab === 'trilha' && (
-                    hasMentorshipAccess ? <StudentMentorshipPanel studentId={user.id} /> : <TrilhaVencedor />
+                    hasMentorshipAccess ? <StudentMentorshipPanel studentId={user.id} revisions={revisions} onCompleteRevision={completeRevision} /> : <TrilhaVencedor />
                 )}
                 {activeTab === 'banco_questoes' && (
                     hasMentorshipAccess ? <QuestionBankPanel studentId={user.id} /> : <div className="relative min-h-screen"><PremiumLock /></div>

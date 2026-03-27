@@ -11,7 +11,11 @@ export const MentorshipStorage = {
       .eq('student_id', studentId)
       .single();
 
-    if (error || !data) return null;
+    if (error && error.code !== 'PGRST116') {
+        console.error('Erro ao buscar plano:', error);
+        throw error;
+    }
+    if (!data) return null;
 
     // Fetch extra data (xp, weeklySchedule) from user_progress
     const { data: extraData } = await supabase
@@ -59,7 +63,7 @@ export const MentorshipStorage = {
     }
 
     // Save extra data
-    await supabase
+    const { error: extraError } = await supabase
       .from('user_progress')
       .upsert({
         user_id: plan.studentId,
@@ -68,9 +72,13 @@ export const MentorshipStorage = {
           xp: plan.xp || 0,
           weeklySchedule: plan.weeklySchedule,
           originalTasks: plan.originalTasks
-        },
-        updated_at: new Date().toISOString()
+        }
       }, { onConflict: 'user_id, key' });
+
+    if (extraError) {
+        console.error('Erro ao salvar dados extras (XP, etc):', extraError);
+        throw extraError;
+    }
   },
 
   // Inicializa um plano se não existir (Async)

@@ -18,6 +18,7 @@ const INITIAL_SUBJECTS: Subject[] = [
   { id: '14', name: 'Geografia', totalHoursStudied: 0 },
   { id: '15', name: 'Atualidades', totalHoursStudied: 0 },
   { id: '16', name: 'Direito Penal Militar', totalHoursStudied: 0 },
+  { id: '17', name: 'Processual Penal Militar', totalHoursStudied: 0 },
 ];
 
 const INITIAL_SCHEDULE: ScheduleItem[] = [

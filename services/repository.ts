@@ -30,7 +30,7 @@ export const globalRepo = {
     // USERS
     getUsers: async (): Promise<User[]> => {
         const { data, error } = await supabase.from('users').select('*');
-        if (error) { console.error(error); return []; }
+        if (error || !data) { if (error) console.error(error); return []; }
         
         // Map snake_case from DB (if needed) or assuming direct mapping if we inserted strictly
         return data.map((u: any) => ({
@@ -78,7 +78,7 @@ export const globalRepo = {
     // MATERIALS
     getMaterials: async (): Promise<Material[]> => {
         const { data, error } = await supabase.from('materials').select('*');
-        if (error) return [];
+        if (error || !data) return [];
         return data.map((d: any) => d.content);
     },
     saveMaterials: async (materials: Material[]): Promise<void> => {
@@ -93,7 +93,7 @@ export const globalRepo = {
     // SIMULADOS
     getSimulados: async (): Promise<Simulado[]> => {
         const { data, error } = await supabase.from('simulados').select('*');
-        if (error) return [];
+        if (error || !data) return [];
         return data.map((d: any) => d.content);
     },
     saveSimulado: async (sim: Simulado): Promise<void> => {
@@ -106,7 +106,7 @@ export const globalRepo = {
     // EDITAIS
     getEditais: async (): Promise<Edital[]> => {
         const { data, error } = await supabase.from('editais').select('*');
-        if (error) return [];
+        if (error || !data) return [];
         return data.map((d: any) => d.content);
     },
     saveEdital: async (ed: Edital): Promise<void> => {
@@ -118,30 +118,62 @@ export const globalRepo = {
 
     // STUDY PLANS
     getStudyPlans: async (): Promise<StudyPlan[]> => {
-        const { data, error } = await supabase.from('app_config').select('value').eq('key', 'study_plans_list').single();
-        if (error || !data) return [];
-        return data.value as StudyPlan[];
+        const { data, error } = await supabase.from('study_plans').select('*');
+        if (error || !data) {
+            // Fallback to app_config if table doesn't exist or error
+            const { data: fallbackData, error: fallbackError } = await supabase.from('app_config').select('value').eq('key', 'study_plans_list').single();
+            if (fallbackError || !fallbackData) return [];
+            return fallbackData.value as StudyPlan[];
+        }
+        return data.map((d: any) => ({
+            id: d.id,
+            title: d.title,
+            items: d.items || [],
+            generatedTasks: d.generatedtasks || d.generatedTasks,
+            weeklySchedule: d.weeklyschedule || d.weeklySchedule,
+            subjectConfigs: d.subjectconfigs || d.subjectConfigs,
+            extraGoals: d.extragoals || d.extraGoals,
+            createdAt: d.created_at || d.createdAt
+        })) as StudyPlan[];
     },
     saveStudyPlan: async (plan: StudyPlan): Promise<void> => {
-        const { data, error } = await supabase.from('app_config').select('value').eq('key', 'study_plans_list').single();
-        let plans: StudyPlan[] = [];
-        if (!error && data && data.value) {
-            plans = data.value as StudyPlan[];
+        const dbPlan = {
+            id: plan.id,
+            title: plan.title,
+            items: plan.items || [],
+            generatedtasks: plan.generatedTasks,
+            weeklyschedule: plan.weeklySchedule,
+            subjectconfigs: plan.subjectConfigs,
+            extragoals: plan.extraGoals,
+            created_at: plan.createdAt
+        };
+        const { error } = await supabase.from('study_plans').upsert(dbPlan);
+        if (error) {
+            // Fallback to app_config
+            const { data, error: fetchError } = await supabase.from('app_config').select('value').eq('key', 'study_plans_list').single();
+            let plans: StudyPlan[] = [];
+            if (!fetchError && data && data.value) {
+                plans = data.value as StudyPlan[];
+            }
+            const index = plans.findIndex(p => p.id === plan.id);
+            if (index >= 0) {
+                plans[index] = plan;
+            } else {
+                plans.push(plan);
+            }
+            await supabase.from('app_config').upsert({ key: 'study_plans_list', value: plans });
         }
-        const index = plans.findIndex(p => p.id === plan.id);
-        if (index >= 0) {
-            plans[index] = plan;
-        } else {
-            plans.push(plan);
-        }
-        await supabase.from('app_config').upsert({ key: 'study_plans_list', value: plans });
     },
     deleteStudyPlan: async (id: string): Promise<void> => {
-        const { data, error } = await supabase.from('app_config').select('value').eq('key', 'study_plans_list').single();
-        if (error || !data || !data.value) return;
-        let plans = data.value as StudyPlan[];
-        plans = plans.filter(p => p.id !== id);
-        await supabase.from('app_config').upsert({ key: 'study_plans_list', value: plans });
+        const { error } = await supabase.from('study_plans').delete().eq('id', id);
+        if (error) {
+            // Fallback to app_config
+            const { data, error: fetchError } = await supabase.from('app_config').select('value').eq('key', 'study_plans_list').single();
+            if (fetchError || !data || !data.value) return;
+            let plans = data.value as StudyPlan[];
+            plans = plans.filter(p => p.id !== id);
+            await supabase.from('app_config').upsert({ key: 'study_plans_list', value: plans });
+        }
     },
 
     // GLOBAL CONFIG / SYSTEM MESSAGE

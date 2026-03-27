@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { MentorshipStorage } from './storage';
 import { MentorshipPlan, MentorshipTask, TASK_TYPES, DAYS_OF_WEEK } from './types';
+import { RevisionItem } from '../types';
 import { Check, X, Clock, AlertTriangle, Shield, RefreshCw, Calendar, ArrowLeft, ArrowRight, FastForward, Trash2, ShieldAlert, ShieldCheck, Star, Award, Medal, Crown, ChevronUp, ChevronsUp, Hexagon, Circle, Sun, LayoutDashboard, Target, BookOpen, Dumbbell, Settings, LogOut, Bell, User, Megaphone, Quote, Box } from 'lucide-react';
 import { Dialog, DialogType } from '../components/ui/Dialog';
 
@@ -38,7 +39,15 @@ const RankBadge = ({ rankName, colorClass }: { rankName: string, colorClass: str
   );
 };
 
-export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => {
+export const StudentMentorshipPanel = ({ 
+  studentId, 
+  revisions = [], 
+  onCompleteRevision 
+}: { 
+  studentId: string, 
+  revisions?: RevisionItem[], 
+  onCompleteRevision?: (id: string) => void 
+}) => {
   const [plan, setPlan] = useState<MentorshipPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -226,6 +235,20 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
         // Revert state
         setPlan(plan);
     }
+  };
+
+  const handleCompleteRevision = async (revId: string) => {
+    if (!plan) return;
+    
+    // 1. Call parent to mark as completed and save XP to DB
+    if (onCompleteRevision) {
+      onCompleteRevision(revId);
+    }
+
+    // 2. Update local XP state so UI reflects the change immediately
+    const xpAmount = calculateXP('REVISAO');
+    const newXp = (plan.xp || 0) + xpAmount;
+    setPlan({ ...plan, xp: newXp });
   };
 
   const handleRescheduleClick = () => {
@@ -737,6 +760,8 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
   const totalCount = todaysTasks.length + completedCount;
   const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
   
+  const todaysRevisions = revisions.filter(r => r.scheduledDate === isoDate && !r.completed);
+  
   const rankInfo = getRankInfo(plan.xp || 0);
 
   const RankIcon = ({ iconName, className }: { iconName: string, className?: string }) => {
@@ -960,6 +985,45 @@ export const StudentMentorshipPanel = ({ studentId }: { studentId: string }) => 
                  );
                })}
              </div>
+
+             {/* REVISÕES DO DIA */}
+             {todaysRevisions.length > 0 && (
+               <div className="mt-8 pt-8 border-t border-zinc-800">
+                 <h3 className="text-white font-bold uppercase text-lg flex items-center gap-2 mb-6">
+                   <RefreshCw size={20} className="text-blue-500" />
+                   Revisões do Dia
+                 </h3>
+                 <div className="space-y-3">
+                   {todaysRevisions.map(rev => (
+                     <div 
+                       key={rev.id}
+                       onClick={() => handleCompleteRevision(rev.id)}
+                       className="group relative p-4 rounded-xl border transition-all duration-200 cursor-pointer overflow-hidden bg-zinc-900 border-zinc-700 hover:border-blue-600 hover:shadow-[0_0_20px_rgba(37,99,235,0.1)]"
+                     >
+                       <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-500" />
+                       <div className="flex items-start gap-4 pl-2">
+                         <div className="mt-1 w-6 h-6 rounded border flex items-center justify-center transition-colors bg-transparent border-zinc-600 group-hover:border-blue-500">
+                           <Check width={14} height={14} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" strokeWidth={4} />
+                         </div>
+                         <div className="flex-1">
+                           <div className="flex justify-between items-start">
+                             <h4 className="font-bold text-lg text-white">
+                               {rev.subject}
+                             </h4>
+                             <div className="flex items-center gap-2">
+                               <span className="text-[10px] uppercase font-bold text-zinc-500 bg-zinc-950 px-2 py-1 rounded border border-zinc-800">
+                                 Revisão {rev.stage}d
+                               </span>
+                             </div>
+                           </div>
+                           {rev.topic && <p className="text-sm mt-1 text-zinc-400">{rev.topic}</p>}
+                         </div>
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+               </div>
+             )}
 
              {/* CRONOGRAMA SEMANAL */}
              <div className="mt-8 pt-8 border-t border-zinc-800">
